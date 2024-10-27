@@ -1,4 +1,5 @@
 import uuid
+import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, BackgroundTasks, UploadFile
 from typing import List, Any, Optional, Dict
@@ -16,7 +17,7 @@ assistant_functions = AssistantFunctions(
     gcal_credentials_path=settings.GCAL_CREDENTIALS_PATH,
     gcal_token_path=settings.GCAL_TOKEN_PATH
 )
-ai_assistant = Assistant(api_key=settings.OPENAI_API_KEY, tool_function_map=assistant_functions)
+ai_assistant = Assistant(api_key=settings.OPENAI_API_KEY, tool_function_map=assistant_functions.get_tool_function_map())
 
 class RequestRun(BaseModel):
     text: Optional[str] = Field(None, title="Text", description="Text based prompt")
@@ -24,8 +25,13 @@ class RequestRun(BaseModel):
     images: Optional[List[UploadFile]] = Field(None, title="Images", description="Array of image files")
     video: Optional[UploadFile] = Field(None, title="Video", description="Video file")
 
-@router.post("/run")
+@router.post("/")
 async def post_run(
     request: RequestRun
 ):
-    ai_assistant.perform_run(prompt=request.text)
+    if all(getattr(request, var, None) is None for var in ["text", "audio", "images", "video"]):
+        return { "message": "Missing a valid input." }
+    run_result = ai_assistant.perform_run(prompt=request.text)
+    run_response = ai_assistant.generate_generic_response(run_result)
+    print(run_result)
+    return run_response
