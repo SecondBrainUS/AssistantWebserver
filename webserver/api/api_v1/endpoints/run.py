@@ -15,7 +15,8 @@ assistant_functions = AssistantFunctions(
     notion_running_list_database_id=settings.NOTION_RUNNING_LIST_DATABASE_ID,
     notion_notes_page_id=settings.NOTION_NOTES_PAGE_ID,
     gcal_credentials_path=settings.GCAL_CREDENTIALS_PATH,
-    gcal_token_path=settings.GCAL_TOKEN_PATH
+    gcal_token_path=settings.GCAL_TOKEN_PATH,
+    gcal_auth_method="service_account"
 )
 ai_assistant = Assistant(api_key=settings.OPENAI_API_KEY, tool_function_map=assistant_functions.get_tool_function_map())
 
