@@ -1,13 +1,15 @@
 import uuid
 import json
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, BackgroundTasks, UploadFile
+from fastapi import APIRouter, Depends, BackgroundTasks, UploadFile, File, Form
 from typing import List, Any, Optional, Dict
 from pydantic import BaseModel, Field
 from assistant import Assistant
 from assistant_functions import AssistantFunctions
 from webserver.middleware.server_exceptions import BaseHTTPException
 from webserver.config import settings
+import base64
+import io
 
 router = APIRouter()
 assistant_functions = AssistantFunctions(
@@ -22,7 +24,7 @@ ai_assistant = Assistant(api_key=settings.OPENAI_API_KEY, tool_function_map=assi
 
 class RequestRun(BaseModel):
     text: Optional[str] = Field(None, title="Text", description="Text based prompt")
-    audio: Optional[UploadFile] = Field(None, title="Audio", description="Audio file")
+    audio: Optional[str] = Field(None, title="Audio", description="Audio file")
     images: Optional[List[UploadFile]] = Field(None, title="Images", description="Array of image files")
     video: Optional[UploadFile] = Field(None, title="Video", description="Video file")
 
@@ -31,8 +33,20 @@ async def post_run(
     request: RequestRun
 ):
     if all(getattr(request, var, None) is None for var in ["text", "audio", "images", "video"]):
-        return { "message": "Missing a valid input." }
+        return {"message": "Missing a valid input."}
+
+    if request.audio:
+        # Decode the Base64 audio data
+        audio_data = base64.b64decode(request.audio)
+        
+        # Convert audio data to a file-like object
+        audio_file_like = io.BytesIO(audio_data)
+        
+        # Pass the file-like object to the speech_to_text function
+        stt_result = ai_assistant.speech_to_text(audio_file_like)
+
     run_result = ai_assistant.perform_run(prompt=request.text)
     run_response = ai_assistant.generate_generic_response(run_result)
+
     print(run_result)
     return run_response
