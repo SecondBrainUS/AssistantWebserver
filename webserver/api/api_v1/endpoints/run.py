@@ -35,15 +35,30 @@ async def post_run(
     if all(getattr(request, var, None) is None for var in ["text", "audio", "images", "video"]):
         return {"message": "Missing a valid input."}
 
+    print(f"Request: {request}")
+
     if request.audio:
         # Decode the Base64 audio data
         audio_data = base64.b64decode(request.audio)
         
         # Convert audio data to a file-like object
         audio_file_like = io.BytesIO(audio_data)
-        
+
+        # Debug: Print the first few bytes to check the format
+        audio_file_like.seek(0)
+        print(f"First bytes of decoded audio: {audio_file_like.read(16).hex()}")
+        audio_file_like.seek(0)
+                
         # Pass the file-like object to the speech_to_text function
         stt_result = ai_assistant.speech_to_text(audio_file_like)
+
+        print(f"STT Result: {stt_result}")
+
+        # TODO: if text, append to the beginning of the text
+        if request.text:
+            request.text = stt_result + "\n" + request.text
+        else:
+            request.text = stt_result
 
     run_result = ai_assistant.perform_run(prompt=request.text)
     run_response = ai_assistant.generate_generic_response(run_result)
