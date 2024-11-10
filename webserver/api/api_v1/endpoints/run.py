@@ -11,6 +11,7 @@ from webserver.config import settings
 import base64
 import io
 
+
 router = APIRouter()
 assistant_functions = AssistantFunctions(
     notion_api_key=settings.NOTION_API_KEY,
@@ -22,45 +23,38 @@ assistant_functions = AssistantFunctions(
 )
 ai_assistant = Assistant(api_key=settings.OPENAI_API_KEY, tool_function_map=assistant_functions.get_tool_function_map())
 
-class RequestRun(BaseModel):
-    text: Optional[str] = Field(None, title="Text", description="Text based prompt")
-    audio: Optional[str] = Field(None, title="Audio", description="Audio file")
-    images: Optional[List[UploadFile]] = Field(None, title="Images", description="Array of image files")
-    video: Optional[UploadFile] = Field(None, title="Video", description="Video file")
-
 @router.post("/")
 async def post_run(
-    request: RequestRun
+    text: Optional[str] = Form(None, description="Text based prompt"),
+    audio: Optional[UploadFile] = File(None, description="Audio file"),
+    images: Optional[List[UploadFile]] = File(None, description="Array of image files"),
+    video: Optional[UploadFile] = File(None, description="Video file")
 ):
-    if all(getattr(request, var, None) is None for var in ["text", "audio", "images", "video"]):
+    if all(v is None for v in [text, audio, images, video]):
         return {"message": "Missing a valid input."}
 
-    print(f"Request: {request}")
+    print(f"Inputs - Text: {text}, Audio: {audio}, Images: {images}, Video: {video}")
 
-    if request.audio:
-        # Decode the Base64 audio data
-        audio_data = base64.b64decode(request.audio)
-        
-        # Convert audio data to a file-like object
-        audio_file_like = io.BytesIO(audio_data)
+    if audio:
+        audio_bytes  = await audio.read()
+        print(f"Received audio file: {audio.filename}, size: {len(audio_bytes )} bytes")
 
-        # Debug: Print the first few bytes to check the format
-        audio_file_like.seek(0)
-        print(f"First bytes of decoded audio: {audio_file_like.read(16).hex()}")
-        audio_file_like.seek(0)
-                
+        # Create an in-memory bytes buffer
+        audio_buffer = io.BytesIO(audio_bytes)
+        audio_buffer.name = audio.filename  # Set the name attribute
+
         # Pass the file-like object to the speech_to_text function
-        stt_result = ai_assistant.speech_to_text(audio_file_like)
+        stt_result = ai_assistant.speech_to_text(audio_buffer)
 
         print(f"STT Result: {stt_result}")
 
-        # TODO: if text, append to the beginning of the text
-        if request.text:
-            request.text = stt_result + "\n" + request.text
+        # Combine speech-to-text result with existing text
+        if text:
+            text = stt_result + "\n" + text
         else:
-            request.text = stt_result
+            text = stt_result
 
-    run_result = ai_assistant.perform_run(prompt=request.text)
+    run_result = ai_assistant.perform_run(prompt=text)
     run_response = ai_assistant.generate_generic_response(run_result)
 
     print(run_result)
