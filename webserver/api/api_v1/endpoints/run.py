@@ -8,12 +8,13 @@ from assistant import Assistant
 from assistant_functions import AssistantFunctions
 from webserver.middleware.server_exceptions import BaseHTTPException
 from webserver.config import settings
+from fastapi.responses import StreamingResponse
 import base64
 import io
 
-
 router = APIRouter()
 assistant_functions = AssistantFunctions(
+    openai_api_key=settings.OPENAI_API_KEY,
     notion_api_key=settings.NOTION_API_KEY,
     notion_running_list_database_id=settings.NOTION_RUNNING_LIST_DATABASE_ID,
     notion_notes_page_id=settings.NOTION_NOTES_PAGE_ID,
@@ -22,6 +23,9 @@ assistant_functions = AssistantFunctions(
     gcal_auth_method="service_account"
 )
 ai_assistant = Assistant(api_key=settings.OPENAI_API_KEY, tool_function_map=assistant_functions.get_tool_function_map())
+
+# TODO: audio-only response mode with streaming response and no text (new endpoint, run/audio) comparable to run/text, run/all
+# TODO: generic endpoint that responds with text and URLs for audio/image/video
 
 @router.post("/")
 async def post_run(
@@ -55,7 +59,16 @@ async def post_run(
             text = stt_result
 
     run_result = ai_assistant.perform_run(prompt=text)
-    run_response = ai_assistant.generate_generic_response(run_result)
+    run_response_text = ai_assistant.generate_generic_response(run_result)
+
+    run_response = {
+        "text": run_response_text,
+        "audio": None
+    }
+
+    if audio:
+        tts_result = ai_assistant.text_to_speech(run_response_text)
+        run_response["audio"] = tts_result
 
     print(run_result)
     return run_response
