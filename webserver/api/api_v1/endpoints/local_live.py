@@ -8,6 +8,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, st
 from webserver.util.websocket_session_manager import ConnectionManager
 from webserver.logger_config import init_logger
 import logging
+import uuid
+from fastapi.middleware.cors import CORSMiddleware
 
 init_logger()
 
@@ -21,7 +23,6 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/local/live/token")
 manager = ConnectionManager()
-
 
 # User model for authentication
 class User(BaseModel):
@@ -73,21 +74,32 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
 
 @router.websocket("/")
 async def websocket_endpoint(websocket: WebSocket):
-    logger.info("[WS LOCAL LIVE] WebSocket connection attempt")
-    # Initialize session for user
-    session_id = await manager.connect(websocket)
-    logger.info("[WS LOCAL LIVE] Session initialized: %s", session_id)
-    try:
-        await manager.send_personal_message(f"Session initialized: {session_id}", session_id)
-        while True:
-            # Receive message from the user
-            data = await websocket.receive_text()
-            logger.debug("[WS LOCAL LIVE] Received message from session %s: %s", session_id, data)
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
 
-            # Send a response back to the user
-            response = f"Echo from session {session_id}: {data}"
+    try:
+        user_id = await get_current_user(token)
+    except HTTPException:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    # Generate a unique session ID for this connection
+    session_id = str(uuid.uuid4())
+    await manager.connect(websocket, user_id, session_id)
+
+    # Optionally, send the session ID back to the client
+    await websocket.send_json({"session_id": session_id})
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Process the received message and prepare a response
+            response = f"Echo from server (Session {session_id}): {data}"
             await manager.send_personal_message(response, session_id)
-            logger.debug("[WS LOCAL LIVE] Sent response to session %s: %s", session_id, response)
     except WebSocketDisconnect:
-        manager.disconnect(session_id)
-        logger.info("Session %s disconnected", session_id)
+        manager.disconnect(user_id, session_id)
+    except Exception as e:
+        manager.disconnect(user_id, session_id)
+        await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
