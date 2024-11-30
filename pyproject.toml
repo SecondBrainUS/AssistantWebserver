@@ -15,6 +15,8 @@ assistant = {path = "../Assistant/assistant", develop = true}
 pylint = "^3.3.1"
 boto3 = "^1.35.49"
 python-multipart = "^0.0.17"
+python-jose = "^3.3.0"
+websockets = "^14.1"
 
 [build-system]
 requires = ["poetry-core"]
