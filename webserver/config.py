@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     SYSTEMMODE: str
     DISCORD_TOKEN: str
     OPENAI_API_KEY: str
+    OPENAI_REALTIME_ENDPOINT_URL: str
     NOTION_API_KEY: str
     NOTION_RUNNING_LIST_DATABASE_ID: str
     PICOVOICE_ACCESS_KEY: str
