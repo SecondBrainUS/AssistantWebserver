@@ -118,7 +118,7 @@ class AssistantRealtimeNamespace(BaseNamespace):
                         
                         # Set up callback for responses
                         async def handle_openai_response(response_data):
-                            logger.debug(f"[OPENAI CALLBACK] Received response: {response_data}")
+                            # logger.debug(f"[OPENAI CALLBACK] Received response: {response_data}")
                             await self.sio.emit('receive_message', {
                                 'room_id': room_id,
                                 'message': response_data,

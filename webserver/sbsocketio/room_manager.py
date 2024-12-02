@@ -63,7 +63,8 @@ class Room:
                     "modalities": ["text", "audio"],
                     "instructions": "You are a helpful assistant. Please answer clearly and concisely.",
                     "temperature": 0.8,
-                    "tools": tools  # Now properly formatted
+                    "tools": tools,  # Now properly formatted
+                    "turn_detection": None
                 }
             })
             
