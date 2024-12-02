@@ -48,20 +48,19 @@ class Room:
             # Format tools for session update
             tools = []
             for name, meta in tool_map.items():
+                logger.info(f"Tool name: {name}, meta: {meta}")
                 tool = {
                     "type": "function",
-                    "function": {
-                        "name": name,
-                        "description": meta["description"],
-                        "parameters": meta["parameters"]
-                    }
+                    "name": name,
+                    "description": meta["description"],
+                    "parameters": meta["parameters"]
                 }
                 tools.append(tool)
             
             # Set up the initial session with tools enabled
             await self.api.send_event("session.update", {
                 "session": {
-                    "modalities": ["text"],
+                    "modalities": ["text", "audio"],
                     "instructions": "You are a helpful assistant. Please answer clearly and concisely.",
                     "temperature": 0.8,
                     "tools": tools  # Now properly formatted

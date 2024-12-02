@@ -22,3 +22,6 @@ python-socketio = {extras = ["asyncio-client"], version = "^5.11.4"}
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+serve = "uvicorn:webserver.main:app --reload"
