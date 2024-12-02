@@ -9,9 +9,10 @@ from webserver.config import settings
 logger = logging.getLogger(__name__)
 
 class Room:
-    def __init__(self, room_id: str, api_key: str, endpoint_url: str):
+    def __init__(self, room_id: str, api_key: str, endpoint_url: str, auto_execute_functions: bool = False):
         self.room_id = room_id
         self.api = OpenAIRealTimeAPI(api_key, endpoint_url)
+        self.api.set_auto_execute_functions(auto_execute_functions)
         self.connected_users: set[str] = set()
         
         # Initialize AssistantFunctions
@@ -25,6 +26,9 @@ class Room:
             gcal_auth_method="service_account"
         )
         
+        # Store message callback for broadcasting
+        self._message_callback = None
+        
     async def initialize(self):
         """Initialize the OpenAI API connection and set up event handlers"""
         try:
@@ -32,41 +36,51 @@ class Room:
             self.api.set_message_callback(self._handle_openai_event)
             self.api.register_event_callback("error", self._handle_openai_error)
             
-            # Register tool function handlers
-            self.api.set_tool_function_map(self.assistant_functions.get_tool_function_map())
+            # Get tool function map
+            tool_map = self.assistant_functions.get_tool_function_map()
+            
+            # Register tool functions with API
+            self.api.set_tool_function_map(tool_map)
             
             # Connect to OpenAI
             await self.api.connect()
             
+            # Format tools for session update
+            tools = []
+            for name, meta in tool_map.items():
+                tool = {
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "description": meta["description"],
+                        "parameters": meta["parameters"]
+                    }
+                }
+                tools.append(tool)
+            
             # Set up the initial session with tools enabled
             await self.api.send_event("session.update", {
                 "session": {
-                    "modalities": ["text", "audio"],
+                    "modalities": ["text"],
                     "instructions": "You are a helpful assistant. Please answer clearly and concisely.",
                     "temperature": 0.8,
-                    "turn_detection": None,
-                    "tools": [
-                        {
-                            "type": "function",
-                            "function": {
-                                "name": name,
-                                "description": meta["description"],
-                                "parameters": meta["parameters"]
-                            }
-                        }
-                        for name, meta in self.assistant_functions.get_tool_function_map().items()
-                    ]
+                    "tools": tools  # Now properly formatted
                 }
             })
             
             logger.info(f"Room {self.room_id} initialized successfully")
             return True
+            
         except Exception as e:
-            logger.error(f"Failed to initialize room {self.room_id}: {e}")
+            logger.error(f"Error initializing room {self.room_id}: {e}", exc_info=True)
             return False
 
-    async def _handle_openai_event(self, message):
-        """Handle all messages from OpenAI and broadcast to room"""
+    def set_message_callback(self, callback: callable) -> None:
+        """Set the callback for broadcasting messages to room members."""
+        self._message_callback = callback
+
+    async def _handle_openai_event(self, message: str) -> None:
+        """Handle all messages from OpenAI and broadcast to room."""
         try:
             # Parse the raw message
             event = json.loads(message)
@@ -74,42 +88,55 @@ class Room:
             
             logger.debug(f"Received OpenAI event in room {self.room_id}: {event_type}")
             
-            # This will be caught by the namespace to broadcast
-            return {
-                "event_type": event_type,
-                "data": event,
-                "room_id": self.room_id
-            }
+            # Special handling for tool call results and summaries
+            if event_type == "tool_call.result":
+                logger.debug(f"Tool call result received in room {self.room_id}")
+                # Tool results are handled internally by OpenAI API
+                return
+                
+            # Broadcast the event to room members
+            if self._message_callback:
+                await self._message_callback({
+                    "event_type": event_type,
+                    "data": event,
+                    "room_id": self.room_id
+                })
+            else:
+                logger.warning(f"No message callback set for room {self.room_id}")
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing OpenAI event in room {self.room_id}: {e}")
         except Exception as e:
-            logger.error(f"Error handling OpenAI event in room {self.room_id}: {e}")
+            logger.error(f"Error handling OpenAI event in room {self.room_id}: {e}", exc_info=True)
 
-    async def _handle_openai_error(self, error: str, event: Optional[dict] = None):
-        """Handle errors from OpenAI"""
+    async def _handle_openai_error(self, error: str, event: Optional[dict] = None) -> None:
+        """Handle errors from OpenAI."""
         logger.error(f"OpenAI error in room {self.room_id}: {error}")
         if event:
             logger.debug(f"Error event details: {event}")
+        
+        # Broadcast error to room members if callback is set
+        if self._message_callback:
+            await self._message_callback({
+                "event_type": "error",
+                "data": {"error": error, "event": event},
+                "room_id": self.room_id
+            })
 
-    async def send_message(self, message_data: dict):
-        """Send a message event to OpenAI"""
-        logger.debug(f"[CHECK CHECK] Sending message to OpenAI in room {self.room_id}: {message_data}")
+    async def send_message(self, message: dict) -> None:
+        """Send a message to the OpenAI API."""
         try:
-            type = message_data.get('type')
-            data = message_data.get('data')
+            # Extract auto_execute setting from message if present
+            auto_execute = message.get("auto_execute_functions", False)
+            self.api.set_auto_execute_functions(auto_execute)
             
-            if not type:
-                raise ValueError("Message must include type")
-            
-            if data is None:
-                logger.debug(f"No 'data' field found in message, using message properties as payload")
-                payload = message_data.copy()
-                payload.pop('type', None)
-                data = payload if payload else {}
-            
-            logger.debug(f"Sending event type '{type}' with data: {data}")
-            await self.api.send_event(type, data)
-            
+            # Send the actual message
+            await self.api.send_event(
+                event_type=message["type"],
+                data=message.get("data", {})
+            )
         except Exception as e:
-            logger.error(f"Error sending message to OpenAI in room {self.room_id}: {e}")
+            logger.error(f"Error sending message in room {self.room_id}: {e}", exc_info=True)
             raise
 
     def add_user(self, sid: str):

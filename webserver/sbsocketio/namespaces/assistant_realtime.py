@@ -154,3 +154,60 @@ class AssistantRealtimeNamespace(BaseNamespace):
                     room=sid, 
                     namespace=self.namespace
                 )
+
+    async def _broadcast_room_message(self, message_data: dict) -> None:
+        """Broadcast a message to all members of a room."""
+        try:
+            room_id = message_data.get("room_id")
+            if not room_id:
+                logger.error("No room_id in message data")
+                return
+
+            await self.sio.emit(
+                'receive_message',
+                message_data,
+                room=room_id,
+                namespace=self.namespace
+            )
+        except Exception as e:
+            logger.error(f"Error broadcasting room message: {e}", exc_info=True)
+
+    @staticmethod
+    def _setup_room_message_handler(room) -> None:
+        """Set up message handling for a room."""
+        room.set_message_callback(self._broadcast_room_message)
+
+    async def create_assistant_room(self, sid: str, data: dict):
+        """Create a new assistant room."""
+        room_id = data.get('room_id')
+        if not room_id:
+            logger.warning(f"Invalid room creation attempt from SID {sid}: missing room_id")
+            return
+
+        try:
+            success = await self.room_manager.create_room(room_id)
+            if success:
+                # Set up message handling for the new room
+                room = self.room_manager.get_room(room_id)
+                self._setup_room_message_handler(room)
+                
+                logger.info(f"Created assistant room: {room_id}")
+                await self.sio.emit('room_created', 
+                    {'room_id': room_id}, 
+                    room=sid, 
+                    namespace=self.namespace
+                )
+            else:
+                logger.error(f"Failed to create room {room_id}")
+                await self.sio.emit('room_error', 
+                    {'error': 'Failed to create room'}, 
+                    room=sid, 
+                    namespace=self.namespace
+                )
+        except Exception as e:
+            logger.error(f"Error creating room: {e}", exc_info=True)
+            await self.sio.emit('room_error', 
+                {'error': f'Failed to create room: {str(e)}'}, 
+                room=sid, 
+                namespace=self.namespace
+            )
