@@ -1,4 +1,5 @@
 import logging
+import traceback
 from typing import Optional
 from webserver.config import settings
 from .base import BaseNamespace
@@ -91,53 +92,65 @@ class AssistantRealtimeNamespace(BaseNamespace):
 
         @self.sio.on('send_message', namespace=self.namespace)
         async def send_assistant_message(sid: str, data: dict):
-            room_id = data.get('room_id')
-            message = data.get('message')
-            logger.debug(f"[CHECK CHECK] Sending message to room {room_id}: {message}")
-            if not (room_id and message):
-                logger.warning(f"Invalid message data from SID {sid}: {data}")
-                return
+            try:
+                logger.debug(f"[SEND MESSAGE] Starting with data: {data}")
+                room_id = data.get('room_id')
+                message = data.get('message')
+                
+                if not (room_id and message):
+                    logger.warning(f"Invalid message data from SID {sid}: {data}")
+                    return
 
-            room = self.room_manager.get_room(room_id)
-            
-			# Add a translation layer here, message types sent to the room vs OpenAI
-            
-
-            if room:
-                try:
-                    # Broadcast the user's message to everyone else in the room except the sender
-                    await self.sio.emit('receive_message', {
-                        'room_id': room_id,
-                        'message': message,
-                        'type': 'user'
-                    }, room=room_id, skip_sid=sid, namespace=self.namespace)
-
-                    # Send message to OpenAI and set up callback for responses
-                    async def handle_openai_response(response_data):
-                        # Broadcast OpenAI's response to everyone in the room
+                logger.debug(f"[SEND MESSAGE] Got room_id and message, getting room")
+                room = self.room_manager.get_room(room_id)
+                
+                if room:
+                    logger.debug(f"[SEND MESSAGE] Found room, setting up response handler")
+                    try:
+                        # Broadcast the user's message
                         await self.sio.emit('receive_message', {
                             'room_id': room_id,
-                            'message': response_data,
-                            'type': 'assistant'
-                        }, room=room_id, namespace=self.namespace)
+                            'message': message,
+                            'type': 'user'
+                        }, room=room_id, skip_sid=sid, namespace=self.namespace)
 
-                    # Register the callback for this room's responses
-                    room.api.set_message_callback(handle_openai_response)
-                    
-                    # Send the message to OpenAI
-                    await room.send_message(message)
-                    
-                except Exception as e:
-                    logger.error(f"Error processing message in room {room_id}: {e}")
+                        logger.debug(f"[SEND MESSAGE] Broadcast user message, setting up OpenAI callback")
+                        
+                        # Set up callback for responses
+                        async def handle_openai_response(response_data):
+                            logger.debug(f"[OPENAI CALLBACK] Received response: {response_data}")
+                            await self.sio.emit('receive_message', {
+                                'room_id': room_id,
+                                'message': response_data,
+                                'type': 'assistant'
+                            }, room=room_id, namespace=self.namespace)
+
+                        logger.debug(f"[SEND MESSAGE] Setting message callback")
+                        room.api.set_message_callback(handle_openai_response)
+                        
+                        logger.debug(f"[SEND MESSAGE] Sending message to room")
+                        await room.send_message(message)
+                        
+                    except Exception as e:
+                        logger.error(f"Error in send_assistant_message: {e}")
+                        logger.error(f"Full traceback: {traceback.format_exc()}")
+                        await self.sio.emit('room_error', 
+                            {'error': f'Failed to process message: {str(e)}'}, 
+                            room=sid, 
+                            namespace=self.namespace
+                        )
+                else:
+                    logger.warning(f"Message sent to non-existent room {room_id}")
                     await self.sio.emit('room_error', 
-                        {'error': 'Failed to process message'}, 
+                        {'error': 'Room does not exist'}, 
                         room=sid, 
                         namespace=self.namespace
                     )
-            else:
-                logger.warning(f"Message sent to non-existent room {room_id}")
+            except Exception as e:
+                logger.error(f"Top-level error in send_assistant_message: {e}")
+                logger.error(f"Full traceback: {traceback.format_exc()}")
                 await self.sio.emit('room_error', 
-                    {'error': 'Room does not exist'}, 
+                    {'error': f'Failed to process message: {str(e)}'}, 
                     room=sid, 
                     namespace=self.namespace
                 )

@@ -3,6 +3,8 @@ import asyncio
 from typing import Dict, Optional
 from assistant_realtime_openai import OpenAIRealTimeAPI
 import json
+from assistant_functions import AssistantFunctions
+from webserver.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +14,17 @@ class Room:
         self.api = OpenAIRealTimeAPI(api_key, endpoint_url)
         self.connected_users: set[str] = set()
         
+        # Initialize AssistantFunctions
+        self.assistant_functions = AssistantFunctions(
+            openai_api_key=settings.OPENAI_API_KEY,
+            notion_api_key=settings.NOTION_API_KEY,
+            notion_running_list_database_id=settings.NOTION_RUNNING_LIST_DATABASE_ID,
+            notion_notes_page_id=settings.NOTION_NOTES_PAGE_ID,
+            gcal_credentials_path=settings.GCAL_CREDENTIALS_PATH,
+            gcal_token_path=settings.GCAL_TOKEN_PATH,
+            gcal_auth_method="service_account"
+        )
+        
     async def initialize(self):
         """Initialize the OpenAI API connection and set up event handlers"""
         try:
@@ -19,15 +32,30 @@ class Room:
             self.api.set_message_callback(self._handle_openai_event)
             self.api.register_event_callback("error", self._handle_openai_error)
             
+            # Register tool function handlers
+            self.api.set_tool_function_map(self.assistant_functions.get_tool_function_map())
+            
             # Connect to OpenAI
             await self.api.connect()
             
-            # Set up the initial session
+            # Set up the initial session with tools enabled
             await self.api.send_event("session.update", {
                 "session": {
                     "modalities": ["text", "audio"],
                     "instructions": "You are a helpful assistant. Please answer clearly and concisely.",
-                    "temperature": 0.8
+                    "temperature": 0.8,
+                    "turn_detection": None,
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": name,
+                                "description": meta["description"],
+                                "parameters": meta["parameters"]
+                            }
+                        }
+                        for name, meta in self.assistant_functions.get_tool_function_map().items()
+                    ]
                 }
             })
             
@@ -68,9 +96,16 @@ class Room:
             type = message_data.get('type')
             data = message_data.get('data')
             
-            if not type or not data:
-                raise ValueError("Message must include type and data")
+            if not type:
+                raise ValueError("Message must include type")
             
+            if data is None:
+                logger.debug(f"No 'data' field found in message, using message properties as payload")
+                payload = message_data.copy()
+                payload.pop('type', None)
+                data = payload if payload else {}
+            
+            logger.debug(f"Sending event type '{type}' with data: {data}")
             await self.api.send_event(type, data)
             
         except Exception as e:
