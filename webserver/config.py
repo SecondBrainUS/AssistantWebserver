@@ -16,7 +16,14 @@ class Settings(BaseSettings):
     TIDAL_SECRETS_FILEPATH: str
     GCAL_CREDENTIALS_PATH: str
     GCAL_TOKEN_PATH: str
-
+    GOOGLE_CLIENT_ID: str
+    GOOGLE_CLIENT_SECRET: str
+    ASSISTANTDB_URL: str
+    BASE_URL: str
+    FRONTEND_URL: str
+    JWT_SECRET_KEY: str
+    JWT_ALGORITHM: str
+    
 dotenv_path = os.getenv('ENVPATH', 'env/.env.local')
 print(dotenv_path)
 load_dotenv(dotenv_path=dotenv_path)

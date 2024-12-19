@@ -64,7 +64,10 @@ class Room:
                     "instructions": "You are a helpful assistant. Please answer clearly and concisely.",
                     "temperature": 0.8,
                     "tools": tools,  # Now properly formatted
-                    "turn_detection": None
+                    "turn_detection": None,
+                    "input_audio_transcription": {
+                        "model": "whisper-1"
+                    }
                 }
             })
             
