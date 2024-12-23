@@ -96,6 +96,9 @@ class AssistantRealtimeNamespace(BaseNamespace):
                 logger.debug(f"[SEND MESSAGE] Starting with data: {data}")
                 room_id = data.get('room_id')
                 message = data.get('message')
+                userid = data.get('userid')
+                model = data.get('model')
+
                 
                 if not (room_id and message):
                     logger.warning(f"Invalid message data from SID {sid}: {data}")
@@ -129,7 +132,7 @@ class AssistantRealtimeNamespace(BaseNamespace):
                         room.api.set_message_callback(handle_openai_response)
                         
                         logger.debug(f"[SEND MESSAGE] Sending message to room")
-                        await room.send_message(message)
+                        await room.send_message(message, userid, model)
                         
                     except Exception as e:
                         logger.error(f"Error in send_assistant_message: {e}")
@@ -191,6 +194,9 @@ class AssistantRealtimeNamespace(BaseNamespace):
                 room = self.room_manager.get_room(room_id)
                 self._setup_room_message_handler(room)
                 
+                # Set up message error handling for the new room
+                room.set_message_error_callback(lambda error_data: self._send_message_error(sid, error_data))
+                
                 logger.info(f"Created assistant room: {room_id}")
                 await self.sio.emit('room_created', 
                     {'room_id': room_id}, 
@@ -211,3 +217,6 @@ class AssistantRealtimeNamespace(BaseNamespace):
                 room=sid, 
                 namespace=self.namespace
             )
+
+    async def _send_message_error(self, sid: str, error_data: dict):
+        await self.sio.emit('message_error', error_data, room=sid, namespace=self.namespace)

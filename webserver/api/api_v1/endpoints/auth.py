@@ -59,6 +59,7 @@ async def create_or_update_user(db: Session, provider: str, claims: dict, token:
 def create_jwt_token(user, userinfo):
     payload = {
         "sub": str(user.user_id),
+        "user_id": str(user.user_id),
         "email": user.email,
         "auth_type": user.auth_type,
         "picture": userinfo.get("picture"),
