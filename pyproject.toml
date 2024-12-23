@@ -24,9 +24,12 @@ authlib = "^1.3.2"
 passlib = {extras = ["bcrypt"], version = "^1.7.4"}
 psycopg2 = "^2.9.10"
 itsdangerous = "^2.2.0"
+pymongo = "4.9.0"
+motor = "^3.6.0"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-serve = "uvicorn:webserver.main:app --reload"
+dev = "webserver.main:start"
+serve = "webserver.main:start --reload"

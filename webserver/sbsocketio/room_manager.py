@@ -5,6 +5,7 @@ from assistant_realtime_openai import OpenAIRealTimeAPI
 import json
 from assistant_functions import AssistantFunctions
 from webserver.config import settings
+from webserver.db.chatdb.db import mongodb_client
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,10 @@ class Room:
             notion_notes_page_id=settings.NOTION_NOTES_PAGE_ID,
             gcal_credentials_path=settings.GCAL_CREDENTIALS_PATH,
             gcal_token_path=settings.GCAL_TOKEN_PATH,
-            gcal_auth_method="service_account"
+            gcal_auth_method="service_account",
+            sensor_values_host=settings.SENSOR_VALUES_HOST_CRITTENDEN,
+            sensor_values_metrics=settings.SENSOR_VALUES_METRICS,
+            sensor_values_group_id=settings.SENSOR_VALUES_CRITTENDEN_GROUP_ID
         )
         
         # Store message callback for broadcasting
@@ -63,7 +67,7 @@ class Room:
                     "modalities": ["text", "audio"],
                     "instructions": "You are a helpful assistant. Please answer clearly and concisely.",
                     "temperature": 0.8,
-                    "tools": tools,  # Now properly formatted
+                    "tools": tools,
                     "turn_detection": None,
                     "input_audio_transcription": {
                         "model": "whisper-1"
@@ -92,10 +96,10 @@ class Room:
             logger.debug(f"Received OpenAI event in room {self.room_id}: {event_type}")
             
             # Special handling for tool call results and summaries
-            if event_type == "tool_call.result":
-                logger.debug(f"Tool call result received in room {self.room_id}")
-                # Tool results are handled internally by OpenAI API
-                return
+            # if event_type == "tool_call.result":
+            #     logger.debug(f"Tool call result received in room {self.room_id}")
+            #     # Tool results are handled internally by OpenAI API
+            #     return
                 
             # Broadcast the event to room members
             if self._message_callback:
@@ -193,3 +197,13 @@ class RoomManager:
         if room:
             await room.cleanup()
             logger.info(f"Room {room_id} removed")
+
+    # TODO: example code
+    # async def save_message(self, room_id: str, message: dict):
+    #     """Save a message to the database"""
+    #     try:
+    #         messages_collection = mongodb_client.db["messages"]
+    #         await messages_collection.insert_one(message)
+    #         logger.info(f"Message saved for room {room_id}")
+    #     except Exception as e:
+    #         logger.error(f"Error saving message for room {room_id}: {e}", exc_info=True)

@@ -56,11 +56,13 @@ async def create_or_update_user(db: Session, provider: str, claims: dict, token:
     db.commit()
     return user
 
-def create_jwt_token(user):
+def create_jwt_token(user, userinfo):
     payload = {
         "sub": str(user.user_id),
         "email": user.email,
-        "auth_type": user.auth_type
+        "auth_type": user.auth_type,
+        "picture": userinfo.get("picture"),
+        "name": userinfo.get("name")
     }
     token = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     return token
@@ -87,7 +89,7 @@ async def callback(provider: str, request: Request, db: Session = Depends(get_db
         return {"message": "Provider not supported"}
 
     user = await create_or_update_user(db, provider, userinfo, token)
-    jwt_token = create_jwt_token(user)
+    jwt_token = create_jwt_token(user, userinfo)
 
     # Redirect back to frontend with token
     frontend_redirect = f"{settings.FRONTEND_URL}/login-success?token={jwt_token}"
