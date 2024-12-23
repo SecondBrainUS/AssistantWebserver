@@ -19,7 +19,7 @@ async def save_message(message: dict):
         messages_collection = mongodb_client.db["messages"]
         await messages_collection.insert_one(message)
         logger.info(f"Message saved for message_id {message_id}")
-        return {"success": True}
+        return {"success": True, "message_id": message_id}
     except Exception as e:
         logger.error(
             f"Error saving message for message_id {message_id}: {e}", exc_info=True
@@ -34,7 +34,7 @@ async def save_chat(chat: dict):
         chats_collection = mongodb_client.db["chats"]
         await chats_collection.insert_one(chat)
         logger.info(f"Chat saved for chat_id {chat_id}")
-        return {"success": True}
+        return {"success": True, "chat_id": chat_id}
     except Exception as e:
         logger.error(f"Error saving chat for chat_id {chat_id}: {e}", exc_info=True)
         return {"error": e}
@@ -214,7 +214,8 @@ class Room:
 
             logger.info(f"[SEND MESSAGE] ", message)
 
-            if self.message_count == 0:
+            chat_id = message.get("chat_id")
+            if not chat_id:
                 # TODO: add background task to name the chat by LLM, update the chat with the name by ID
                 chat_id = str(uuid.uuid4())
                 chat = {
@@ -224,12 +225,17 @@ class Room:
                 }
 
                 save_chat_result = await save_chat(chat)
-                if save_chat_result["success"]:
+                if save_chat_result.get("success"):
                     logger.info(f"[SEND MESSAGE] Saved chat")
+                    # Emit chat_created event with the new chat_id
+                    if self._message_callback:
+                        await self._message_callback({
+                            "event_type": "chat_created",
+                            "data": {"chat_id": chat_id},
+                            "room_id": self.room_id
+                        })
                 else:
-                    logger.error(
-                        f"[SEND MESSAGE] Error saving chat: {save_chat_result['error']}"
-                    )
+                    logger.error(f"[SEND MESSAGE] Error saving chat: {save_chat_result.get('error')}")
                     return
 
             self.message_count += 1
@@ -263,6 +269,7 @@ class Room:
             save_message_result = await save_message(
                 {
                     "message_id": messageid,
+                    "chat_id": chat_id,
                     "user_id": userid,
                     "model": model,
                     "created_timestamp": created_timestamp,
