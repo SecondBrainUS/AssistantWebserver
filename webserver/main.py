@@ -10,17 +10,21 @@ import uvicorn
 
 app = FastAPI()
 
+app.add_middleware(SessionMiddleware, secret_key=settings.SESSION_SECRET_KEY, max_age=3600)
+
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # allow_origins=["*"],
+    # allow_origins=[settings.FRONTEND_URL],
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"]
 )
 
-app.add_middleware(SessionMiddleware, secret_key=settings.JWT_SECRET_KEY)
 load_exception_handlers(app)
 app.include_router(api_router)
 app.mount("/", sio_app)

@@ -1,18 +1,20 @@
 import logging
-from fastapi import APIRouter, Query, HTTPException, status
+from fastapi import APIRouter, Query, HTTPException, status, Depends
 from fastapi.responses import JSONResponse
 from webserver.config import settings
 from webserver.db.chatdb.db import mongodb_client
 from typing import Optional
+from webserver.api.dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-@router.get("/", 
+@router.get("", 
     summary="Retrieve paginated chats",
     response_description="List of chat documents sorted by creation date")
 async def get_chats(
+    current_user: dict = Depends(get_current_user),
     limit: Optional[int] = Query(
         default=20,
         ge=1,
@@ -43,14 +45,17 @@ async def get_chats(
     """
     try:
         # Get total count for pagination info
-        total_chats = await mongodb_client.db["chats"].count_documents({})
+        total_chats = await mongodb_client.db["chats"].count_documents(
+            {"user_id": current_user["sub"]}
+        )
         
-        # Fetch paginated chats
-        chats = await mongodb_client.db["chats"].find() \
-            .sort("created_at", -1) \
-            .skip(offset) \
-            .limit(limit) \
-            .to_list(length=limit)
+        # Fetch paginated chats for current user
+        chats = await mongodb_client.db["chats"].find(
+            {"user_id": current_user["sub"]}
+        ).sort("created_at", -1) \
+         .skip(offset) \
+         .limit(limit) \
+         .to_list(length=limit)
         
         return JSONResponse(
             content={

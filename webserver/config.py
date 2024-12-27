@@ -4,7 +4,7 @@ import os
 
 class Settings(BaseSettings):
     # System Variables
-    SYSTEMMODE: str
+    SYSTEM_MODE: str
 
     # AssistantDB
     ASSISTANTDB_URL: str
@@ -16,8 +16,14 @@ class Settings(BaseSettings):
     # Authentication
     BASE_URL: str
     FRONTEND_URL: str
+
+    # Application Authentication
     JWT_SECRET_KEY: str
+    JWT_REFRESH_SECRET_KEY: str
     JWT_ALGORITHM: str
+    SESSION_SECRET_KEY: str
+
+    # Google Authentication
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str
 
