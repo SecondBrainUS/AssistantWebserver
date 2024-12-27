@@ -2,6 +2,7 @@ import socketio
 import logging
 from .connection_manager import ConnectionManager
 from .router import SocketIORouter
+from webserver.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +12,7 @@ def create_socketio_app():
         async_mode='asgi',
         logger=True,
         engineio_logger=True,
-        cors_allowed_origins=["http://localhost:3000"],
+        cors_allowed_origins=["http://localhost:3000", settings.BASE_URL],
         ping_timeout=60,
         ping_interval=25,
         transports=['websocket', 'polling'],

@@ -93,5 +93,5 @@ async def callback(provider: str, request: Request, db: Session = Depends(get_db
     jwt_token = create_jwt_token(user, userinfo)
 
     # Redirect back to frontend with token
-    frontend_redirect = f"{settings.FRONTEND_URL}/login-success?token={jwt_token}"
+    frontend_redirect = f"{settings.BASE_URL}/login-success?token={jwt_token}"
     return RedirectResponse(frontend_redirect)

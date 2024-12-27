@@ -4,7 +4,9 @@ import os
 
 class Settings(BaseSettings):
     # System Variables
-    SYSTEMMODE: str
+    SYSTEM_MODE: str
+
+    LB_HOST: str
 
     # AssistantDB
     ASSISTANTDB_URL: str
