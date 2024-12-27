@@ -6,8 +6,6 @@ class Settings(BaseSettings):
     # System Variables
     SYSTEM_MODE: str
 
-    LB_HOST: str
-
     # AssistantDB
     ASSISTANTDB_URL: str
 
@@ -22,6 +20,9 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str
+    ACCESS_TOKEN_EXPIRE_MINUTES: int
+    REFRESH_TOKEN_EXPIRE_DAYS: int
+    JWT_REFRESH_SECRET_KEY: str
 
     # Picovoice
     PICOVOICE_ACCESS_KEY: str
