@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Request, Response, HTTPException
+from fastapi.responses import HTMLResponse
 from authlib.integrations.starlette_client import OAuth
 from starlette.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
@@ -73,8 +74,10 @@ def create_temp_jwt_token(user_data: dict):
     payload = {
         "sub": user_data["sub"],
         "email": user_data["email"],
-        "exp": datetime.utcnow() + timedelta(minutes=5),  # Temporary token expiration
-        "token_type": "temp"
+        "exp": datetime.utcnow() + timedelta(minutes=5),
+        "token_type": "temp",
+        "picture": user_data["picture"],
+        "name": user_data["name"]
     }
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
@@ -116,6 +119,8 @@ async def callback(provider: str, request: Request, response: Response, db: Sess
     if provider not in ["google"]:
         raise HTTPException(status_code=404, detail="Provider not supported")
 
+    token = None
+    userinfo = None
     if provider == "google":
         token = await google.authorize_access_token(request)
         userinfo = token.get('userinfo')
@@ -131,38 +136,96 @@ async def callback(provider: str, request: Request, response: Response, db: Sess
         "picture": userinfo.get("picture"),
         "name": userinfo.get("name")
     }
-    access_token, refresh_token = create_tokens(user_data)
 
-    jwt_token = create_jwt_token(user, userinfo)
+    temp_jwt = create_temp_jwt_token(user_data)
 
-    # Redirect back to frontend with token
-    frontend_redirect = f"{settings.BASE_URL}/login-success?token={jwt_token}"
+    frontend_redirect = f"{settings.BASE_URL}/api/v1/auth/login-success-redirect?temp_token={temp_jwt}"
     return RedirectResponse(frontend_redirect)
 
 @router.get("/login-success-redirect")
 async def login_success_redirect(request: Request, response: Response):
+    try:
+        temp_token = request.query_params.get("temp_token")
+        if not temp_token:
+            raise HTTPException(status_code=400, detail="Missing temporary token")
+            
+        payload = jwt.decode(temp_token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        if payload.get("token_type") != "temp":
+            raise HTTPException(status_code=400, detail="Invalid token type")
 
-    access_token, refresh_token = create_tokens(user_data)
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        # httponly=True,
-        secure=False if settings.SYSTEM_MODE == "dev" else True,
-        samesite="lax",
-        domain=None,
-        path="/",
-        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    )
+        user_data = {
+            "sub": payload["sub"],
+            "email": payload["email"],
+            "picture": payload.get("picture"),
+            "name": payload.get("name")
+        }
         
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        # httponly=True,
-        secure=False if settings.SYSTEM_MODE == "dev" else True,
-        samesite="strict",  # "lax"
-        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
-    )
-    return RedirectResponse(f"{settings.BASE_URL}/login-success")
+        # access_token, refresh_token = create_tokens(user_data)
+        
+        redirect_html = f"""
+        <html>
+            <head>
+                <meta http-equiv="refresh" content="0;url=/login-success?temp_token={temp_token}">
+            </head>
+            <body>
+                Redirecting...
+            </body>
+        </html>
+        """
+        return HTMLResponse(content=redirect_html)
+
+    except Exception as e:
+        print(f"Error in login_success_redirect: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/validate-token")
+async def validate_token(request: Request, response: Response):
+    try:
+        temp_token = request.query_params.get("temp_token")
+        if not temp_token:
+            raise HTTPException(status_code=400, detail="Missing temporary token")
+            
+        payload = jwt.decode(temp_token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        if payload.get("token_type") != "temp":
+            raise HTTPException(status_code=400, detail="Invalid token type")
+
+        user_data = {
+            "sub": payload["sub"],
+            "email": payload["email"],
+            "picture": payload.get("picture"),
+            "name": payload.get("name")
+        }
+        
+        access_token, refresh_token = create_tokens(user_data)
+        
+        # Set cookies
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            secure=False,  # Set to True in production
+            httponly=True,
+            samesite="lax",
+            domain=None,
+            path="/",
+            max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        )
+
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            secure=False,  # Set to True in production
+            httponly=True,
+            samesite="lax",
+            domain=None,
+            path="/",
+            max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+        )
+        
+        return {"status": "success"}
+
+    except Exception as e:
+        print(f"Error in validate_token: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post('/setcookie')
 async def setcookie(request: Request, response: Response):
@@ -177,3 +240,26 @@ async def setcookie(request: Request, response: Response):
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
     return {"message": "Cookie set"}
+
+@router.get("/me")
+async def get_user_info(request: Request):
+    # Get access token from cookie
+    access_token = request.cookies.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        payload = jwt.decode(
+            access_token, 
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM]
+        )
+        return payload
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=e)
+
+@router.post("/logout")
+async def logout(response: Response):
+    response.delete_cookie("access_token")
+    response.delete_cookie("refresh_token")
+    return {"message": "Logged out successfully"}
