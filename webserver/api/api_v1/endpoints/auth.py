@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request, Response, HTTPException
+from fastapi import APIRouter, Depends, Request, Response, HTTPException, Security
 from fastapi.responses import HTMLResponse
 from authlib.integrations.starlette_client import OAuth
 from starlette.responses import RedirectResponse
@@ -10,6 +10,13 @@ from webserver.db.assistantdb.model import User, AuthGoogle
 from datetime import datetime, timedelta
 from jose import jwt
 import uuid
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from webserver.logger_config import init_logger
+import logging
+
+init_logger()
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -103,6 +110,40 @@ def create_tokens(user_data: dict):
     refresh_token = jwt.encode(refresh_token_payload, settings.JWT_REFRESH_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     
     return access_token, refresh_token
+
+def verify_access_token(token: str) -> dict:
+    logger.info("[AUTH] Verifying access token")
+    logger.info(token)
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM]
+        )
+        if payload.get("token_type") != "access":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+async def get_current_user(request: Request):
+    # Add debug logging
+    logger.info(f"Cookies received: {request.cookies}")
+    access_token = request.cookies.get("access_token")
+    
+    if not access_token:
+        raise HTTPException(
+            status_code=401,
+            detail="No access token found in cookies"
+        )
+    
+    try:
+        return verify_access_token(access_token)
+    except Exception as e:
+        logger.error(f"Token verification failed: {str(e)}")
+        raise
 
 @router.get("/{provider}/login")
 async def login(provider: str, request: Request):
@@ -263,3 +304,70 @@ async def logout(response: Response):
     response.delete_cookie("access_token")
     response.delete_cookie("refresh_token")
     return {"message": "Logged out successfully"}
+
+@router.post("/refresh")
+async def refresh_token(request: Request, response: Response):
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="No refresh token")
+    
+    try:
+        # Verify refresh token
+        payload = jwt.decode(
+            refresh_token,
+            settings.JWT_REFRESH_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM]
+        )
+        if payload.get("token_type") != "refresh":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+        
+        # Get user data from database
+        db = next(get_db())
+        user = db.query(User).filter(User.user_id == payload["sub"]).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        
+        # Create new tokens
+        user_data = {
+            "sub": str(user.user_id),
+            "email": user.email,
+            "auth_type": user.auth_type
+        }
+        
+        access_token, new_refresh_token = create_tokens(user_data)
+        
+        # Set new cookies
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            secure=False if settings.SYSTEM_MODE == "dev" else True,
+            httponly=True,
+            samesite="lax",
+            path="/",
+            max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        )
+        
+        response.set_cookie(
+            key="refresh_token",
+            value=new_refresh_token,
+            secure=False if settings.SYSTEM_MODE == "dev" else True,
+            httponly=True,
+            samesite="lax",
+            path="/",
+            max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+        )
+        
+        return {"status": "success"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+# Example protected endpoint
+@router.get("/protected-example")
+async def protected_example(request: Request, current_user: dict = Depends(get_current_user)):
+    # Add debug logging
+    logger.info(f"Headers received: {dict(request.headers)}")
+    return {
+        "message": "This is a protected endpoint",
+        "user": current_user
+    }
