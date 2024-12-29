@@ -13,6 +13,8 @@ class User(Base):
     user_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String, unique=True, index=True, nullable=False)
     auth_type = Column(String, nullable=False)  # ex: "google", "microsoft"
+    picture = Column(String, nullable=True)
+    name = Column(String, nullable=True)
     created = Column(DateTime, default=func.now())
     updated = Column(DateTime, default=func.now(), onupdate=func.now())
 

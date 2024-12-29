@@ -42,7 +42,7 @@ async def create_or_update_user(db: Session, provider: str, claims: dict, token:
     user = db.query(User).filter(User.email == email).one_or_none()
     if not user:
         # Create new user
-        user = User(email=email, auth_type=provider)
+        user = User(email=email, auth_type=provider, picture=claims.get("picture"), name=claims.get("name"))
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -114,12 +114,19 @@ def create_tokens(user_data: dict):
     
     return access_token, refresh_token
 
-def verify_access_token(token: str) -> dict:
-    logger.info("[AUTH] Verifying access token")
-    logger.info(token)
+async def verify_access_token(request: Request):
+    logger.info(f"[AUTH] Verifying access token for {request.client.host}")
+    access_token = request.cookies.get("access_token")
+
+    if not access_token:
+        raise HTTPException(
+            status_code=401,
+            detail="No access token found in cookies"
+        )
+
     try:
         payload = jwt.decode(
-            token,
+            access_token,
             settings.JWT_SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM]
         )
@@ -128,25 +135,13 @@ def verify_access_token(token: str) -> dict:
         return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired")
-    except jwt.JWTError:
+    except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.JWTError:
+        raise HTTPException(status_code=401, detail="JWT error")
 
 async def get_current_user(request: Request):
-    # Add debug logging
-    logger.info(f"Cookies received: {request.cookies}")
-    access_token = request.cookies.get("access_token")
-    
-    if not access_token:
-        raise HTTPException(
-            status_code=401,
-            detail="No access token found in cookies"
-        )
-    
-    try:
-        return verify_access_token(access_token)
-    except Exception as e:
-        logger.error(f"Token verification failed: {str(e)}")
-        raise
+    pass
 
 @router.get("/{provider}/login")
 async def login(provider: str, request: Request):
@@ -171,6 +166,8 @@ async def callback(provider: str, request: Request, response: Response, db: Sess
     else:
         return {"message": "Provider not supported"}
 
+    # TODO: save user email, auth_type, picture, name to db
+    # then remove from temp_jwt_token
     user = await create_or_update_user(db, provider, userinfo, token)
 
     user_data = {
@@ -238,6 +235,7 @@ async def validate_token(
         if payload.get("token_type") != "temp":
             raise HTTPException(status_code=400, detail="Invalid token type")
 
+        # TODO: move to Pydantic model or class
         user_data = {
             "sub": payload["sub"],
             "email": payload["email"],
@@ -264,7 +262,7 @@ async def validate_token(
         response.set_cookie(
             key="refresh_token",
             value=refresh_token,
-            secure=False,  # Set to True in production
+            secure=False if settings.SYSTEM_MODE == "dev" else True,
             httponly=True,
             samesite="lax",
             domain=None,
