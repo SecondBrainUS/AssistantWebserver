@@ -21,6 +21,8 @@ init_logger()
 
 logger = logging.getLogger(__name__)
 
+# TODO: long term, use guest sessionid instead of userid for temp tokens during auth login process
+
 router = APIRouter()
 
 oauth = OAuth()
@@ -33,6 +35,7 @@ google = oauth.register(
 )
 
 async def create_or_update_user(db: Session, provider: str, claims: dict, token: dict):
+    """ Upserts the user into the database. Determines user by email."""
     email = claims.get("email")
     provider_user_id = claims.get("sub")  # For Google/Microsoft, "sub" is the unique user ID
 
@@ -41,7 +44,7 @@ async def create_or_update_user(db: Session, provider: str, claims: dict, token:
 
     user = db.query(User).filter(User.email == email).one_or_none()
     if not user:
-        # Create new user
+        # Create new user (auto created UUID in DB and refresh into user object)
         user = User(email=email, auth_type=provider, picture=claims.get("picture"), name=claims.get("name"))
         db.add(user)
         db.commit()
@@ -68,26 +71,12 @@ async def create_or_update_user(db: Session, provider: str, claims: dict, token:
     db.commit()
     return user
 
-def create_jwt_token(user, userinfo):
-    payload = {
-        "sub": str(user.user_id),
-        "user_id": str(user.user_id),
-        "email": user.email,
-        "auth_type": user.auth_type,
-        "picture": userinfo.get("picture"),
-        "name": userinfo.get("name")
-    }
-    token = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
-    return token
-
 def create_temp_jwt_token(user_data: dict):
+    """Creates a temporary JWT token for the login process"""
     payload = {
         "sub": user_data["sub"],
-        "email": user_data["email"],
         "exp": datetime.utcnow() + timedelta(minutes=5),
         "token_type": "temp",
-        "picture": user_data["picture"],
-        "name": user_data["name"]
     }
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
@@ -145,6 +134,7 @@ async def get_current_user(request: Request):
 
 @router.get("/{provider}/login")
 async def login(provider: str, request: Request):
+    """Redirect to the provider's login page"""
     if provider not in ["google"]:
         raise HTTPException(status_code=404, detail="Provider not supported")
     redirect_uri = f"{settings.BASE_URL}/api/v1/auth/{provider}/callback"
@@ -155,6 +145,7 @@ async def login(provider: str, request: Request):
 
 @router.get("/{provider}/callback")
 async def callback(provider: str, request: Request, response: Response, db: Session = Depends(get_db)):
+    """Callback from the provider's login page. Upserts the user. Creates a temporary token and redirects"""
     if provider not in ["google"]:
         raise HTTPException(status_code=404, detail="Provider not supported")
 
@@ -166,16 +157,11 @@ async def callback(provider: str, request: Request, response: Response, db: Sess
     else:
         return {"message": "Provider not supported"}
 
-    # TODO: save user email, auth_type, picture, name to db
-    # then remove from temp_jwt_token
     user = await create_or_update_user(db, provider, userinfo, token)
 
     user_data = {
         "sub": str(user.user_id),
-        "email": user.email,
-        "auth_type": user.auth_type,
-        "picture": userinfo.get("picture"),
-        "name": userinfo.get("name")
+        "auth_type": user.auth_type
     }
 
     temp_jwt = create_temp_jwt_token(user_data)
@@ -196,13 +182,8 @@ async def login_success_redirect(request: Request, response: Response):
 
         user_data = {
             "sub": payload["sub"],
-            "email": payload["email"],
-            "picture": payload.get("picture"),
-            "name": payload.get("name")
         }
-        
-        # access_token, refresh_token = create_tokens(user_data)
-        
+
         redirect_html = f"""
         <html>
             <head>
@@ -238,12 +219,13 @@ async def validate_token(
         # TODO: move to Pydantic model or class
         user_data = {
             "sub": payload["sub"],
-            "email": payload["email"],
-            "picture": payload.get("picture"),
-            "name": payload.get("name")
         }
         
         access_token, refresh_token = create_tokens(user_data)
+        access_token_max_age = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        refresh_token_max_age = settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+        access_token_expires = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        refresh_token_expires = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
 
         session_id = str(uuid.uuid4())
         
@@ -251,12 +233,12 @@ async def validate_token(
         response.set_cookie(
             key="access_token",
             value=access_token,
-            secure=False,  # Set to True in production
+            secure=False if settings.SYSTEM_MODE == "dev" else True,
             httponly=True,
-            samesite="lax",
+            samesite="lax" if settings.SYSTEM_MODE == "dev" else "strict",
             domain=None,
             path="/",
-            max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+            max_age=access_token_max_age
         )
 
         response.set_cookie(
@@ -264,25 +246,33 @@ async def validate_token(
             value=refresh_token,
             secure=False if settings.SYSTEM_MODE == "dev" else True,
             httponly=True,
-            samesite="lax",
+            samesite="lax" if settings.SYSTEM_MODE == "dev" else "strict",
             domain=None,
             path="/",
-            max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+            max_age=refresh_token_max_age
         )
 
         response.set_cookie(
             key="session_id",
             value=session_id,
-            secure=False,  # Set to True in production
+            secure=False if settings.SYSTEM_MODE == "dev" else True,
             httponly=True,
-            samesite="lax",
+            samesite="lax" if settings.SYSTEM_MODE == "dev" else "strict",
             domain=None,
             path="/",
             max_age=settings.SESSION_ID_EXPIRE_MINUTES * 60
         )
 
         # Map session_id to user_id in the database and in cache
-        session = UserSession(session_id=session_id, user_id=user_data["sub"], expires=datetime.utcnow() + timedelta(minutes=settings.SESSION_ID_EXPIRE_MINUTES))
+        session = UserSession(
+            session_id=session_id, 
+            user_id=user_data["sub"], 
+            session_expires=datetime.utcnow() + timedelta(minutes=settings.SESSION_ID_EXPIRE_MINUTES),
+            access_token_expires=access_token_expires,
+            refresh_token_expires=refresh_token_expires,
+            access_token=access_token,
+            refresh_token=refresh_token
+        )
         db.add(session)
         db.commit()
         db.refresh(session)
@@ -294,20 +284,6 @@ async def validate_token(
     except Exception as e:
         logger.error(f"[AUTH] Error in validate_token: {str(e)}")
         raise HTTPException(status_code=500)
-
-@router.post('/setcookie')
-async def setcookie(request: Request, response: Response):
-    response.set_cookie(
-        key="ASD",
-        value="ASDASDASD",
-        httponly=True,
-        secure=False if settings.SYSTEM_MODE == "dev" else True,
-        samesite="strict",
-        domain=None,
-        path="/",
-        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    )
-    return {"message": "Cookie set"}
 
 @router.get("/me")
 async def get_user_info(request: Request):
@@ -330,6 +306,7 @@ async def get_user_info(request: Request):
 async def logout(response: Response):
     response.delete_cookie("access_token")
     response.delete_cookie("refresh_token")
+    response.delete_cookie("session_id")
     return {"message": "Logged out successfully"}
 
 @router.post("/refresh")
@@ -411,3 +388,34 @@ async def protected_example(
         "message": "This is a protected endpoint",
         "user": user_session
     }
+
+
+"""
+@router.post('/setcookie')
+async def setcookie(request: Request, response: Response):
+    response.set_cookie(
+        key="ASD",
+        value="ASDASDASD",
+        httponly=True,
+        secure=False if settings.SYSTEM_MODE == "dev" else True,
+        samesite="strict",
+        domain=None,
+        path="/",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+    return {"message": "Cookie set"}
+
+    
+
+def create_jwt_token(user, userinfo):
+    payload = {
+        "sub": str(user.user_id),
+        "user_id": str(user.user_id),
+        "email": user.email,
+        "auth_type": user.auth_type,
+        "picture": userinfo.get("picture"),
+        "name": userinfo.get("name")
+    }
+    token = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return token
+"""
