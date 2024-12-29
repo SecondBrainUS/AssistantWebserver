@@ -26,6 +26,7 @@ psycopg2 = "^2.9.10"
 itsdangerous = "^2.2.0"
 pymongo = "4.9.0"
 motor = "^3.6.0"
+aiomcache = "^0.8.2"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

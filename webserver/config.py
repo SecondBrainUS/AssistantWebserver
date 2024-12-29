@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     MONGODB_URI: str
     MONGODB_DB_NAME: str
 
+    # Memcache
+    MEMCACHE_HOST: str
+    MEMCACHE_PORT: int
+
     # Authentication
     BASE_URL: str
     FRONTEND_URL: str
@@ -23,6 +27,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int
     REFRESH_TOKEN_EXPIRE_DAYS: int
     JWT_REFRESH_SECRET_KEY: str
+    SESSION_ID_EXPIRE_MINUTES: int
 
     # Picovoice
     PICOVOICE_ACCESS_KEY: str

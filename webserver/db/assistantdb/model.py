@@ -25,3 +25,11 @@ class AuthGoogle(Base):
     token_expiry = Column(String, nullable=True)
     created = Column(DateTime, default=func.now())
     updated = Column(DateTime, default=func.now(), onupdate=func.now())
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+    session_id = Column(String, primary_key=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=False)
+    created = Column(DateTime, default=func.now())
+    updated = Column(DateTime, default=func.now(), onupdate=func.now())
+    expires = Column(DateTime, nullable=False)

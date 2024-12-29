@@ -1,18 +1,21 @@
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, Request, Response, HTTPException, Security
 from fastapi.responses import HTMLResponse
-from authlib.integrations.starlette_client import OAuth
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
+from authlib.integrations.starlette_client import OAuth
 from sqlalchemy.orm import Session
+from jose import jwt
 from webserver.config import settings
 from webserver.db.assistantdb.connection import get_db
-from webserver.db.assistantdb.model import User, AuthGoogle
-from datetime import datetime, timedelta
-from jose import jwt
+from webserver.db.assistantdb.model import User, AuthGoogle, UserSession
 import uuid
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from webserver.logger_config import init_logger
+import aiomcache
 import logging
+import json
+from webserver.db.memcache.connection import get_memcache_client
+from webserver.logger_config import init_logger
 
 init_logger()
 
@@ -220,7 +223,12 @@ async def login_success_redirect(request: Request, response: Response):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/validate-token")
-async def validate_token(request: Request, response: Response):
+async def validate_token(
+    request: Request, 
+    response: Response, 
+    db: Session = Depends(get_db),
+    memcache_client: aiomcache.Client = Depends(get_memcache_client)
+    ):
     try:
         temp_token = request.query_params.get("temp_token")
         if not temp_token:
@@ -238,6 +246,8 @@ async def validate_token(request: Request, response: Response):
         }
         
         access_token, refresh_token = create_tokens(user_data)
+
+        session_id = str(uuid.uuid4())
         
         # Set cookies
         response.set_cookie(
@@ -261,12 +271,31 @@ async def validate_token(request: Request, response: Response):
             path="/",
             max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
         )
-        
+
+        response.set_cookie(
+            key="session_id",
+            value=session_id,
+            secure=False,  # Set to True in production
+            httponly=True,
+            samesite="lax",
+            domain=None,
+            path="/",
+            max_age=settings.SESSION_ID_EXPIRE_MINUTES * 60
+        )
+
+        # Map session_id to user_id in the database and in cache
+        session = UserSession(session_id=session_id, user_id=user_data["sub"], expires=datetime.utcnow() + timedelta(minutes=settings.SESSION_ID_EXPIRE_MINUTES))
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+
+        await memcache_client.set(session_id.encode(), json.dumps(user_data).encode())
+
         return {"status": "success"}
 
     except Exception as e:
-        print(f"Error in validate_token: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[AUTH] Error in validate_token: {str(e)}")
+        raise HTTPException(status_code=500)
 
 @router.post('/setcookie')
 async def setcookie(request: Request, response: Response):
@@ -364,10 +393,23 @@ async def refresh_token(request: Request, response: Response):
 
 # Example protected endpoint
 @router.get("/protected-example")
-async def protected_example(request: Request, current_user: dict = Depends(get_current_user)):
+async def protected_example(
+    request: Request, 
+    current_user: dict = Depends(get_current_user),
+    memcache_client: aiomcache.Client = Depends(get_memcache_client)
+    ):
     # Add debug logging
+    logger.info(f"FIND ME")
     logger.info(f"Headers received: {dict(request.headers)}")
+    logger.info(f"Current user: {current_user}")
+
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=401, detail="No session ID")
+    
+    user_session = await memcache_client.get(session_id.encode())
+    logger.info(f"User ID: {user_session.decode()}")
     return {
         "message": "This is a protected endpoint",
-        "user": current_user
+        "user": user_session
     }

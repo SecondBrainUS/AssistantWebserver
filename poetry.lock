@@ -109,6 +109,17 @@ yarl = ">=1.17.0,<2.0"
 speedups = ["Brotli", "aiodns (>=3.2.0)", "brotlicffi"]
 
 [[package]]
+name = "aiomcache"
+version = "0.8.2"
+description = "Minimal pure python memcached client"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "aiomcache-0.8.2-py3-none-any.whl", hash = "sha256:9d78d6b6e74e775df18b350b1cddfa96bd2f0a44d49ad27fa87759a3469cef5e"},
+    {file = "aiomcache-0.8.2.tar.gz", hash = "sha256:43b220d7f499a32a71871c4f457116eb23460fa216e69c1d32b81e3209e51359"},
+]
+
+[[package]]
 name = "aiosignal"
 version = "1.3.1"
 description = "aiosignal: a list of registered asynchronous callbacks"
@@ -2999,4 +3010,4 @@ repair = ["scipy (>=1.6.3)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "8d4ef904f549510568b4e9bbd71c262335dff09976e5e14cf728ade5bf315ee2"
+content-hash = "2f47bbb164b3c9117644ec4938b96dbe89e8e47daa536ebdea0a20eda94f826b"
