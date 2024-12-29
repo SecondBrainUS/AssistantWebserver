@@ -32,6 +32,10 @@ class UserSession(Base):
     __tablename__ = "user_sessions"
     session_id = Column(String, primary_key=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=False)
+    access_token = Column(String, nullable=False)
+    refresh_token = Column(String, nullable=False)
+    access_token_expires = Column(DateTime, nullable=False)
+    refresh_token_expires = Column(DateTime, nullable=False)
+    session_expires = Column(DateTime, nullable=False)
     created = Column(DateTime, default=func.now())
     updated = Column(DateTime, default=func.now(), onupdate=func.now())
-    expires = Column(DateTime, nullable=False)
