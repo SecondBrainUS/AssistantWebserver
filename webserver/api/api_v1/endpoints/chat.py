@@ -5,6 +5,7 @@ from webserver.config import settings
 from webserver.db.chatdb.db import mongodb_client
 from typing import Optional
 from webserver.api.dependencies import verify_access_token, get_session
+from webserver.db.chatdb.utils import serialize_doc
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ async def get_chats(
         
         return JSONResponse(
             content={
-                "chats": chats,
+                "chats": serialize_doc(chats),
                 "total": total_chats,
                 "has_more": (offset + len(chats)) < total_chats
             },
@@ -83,7 +84,7 @@ async def get_chat(chat_id: str, request: Request):
         })
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
-        return chat
+        return serialize_doc(chat)
     except HTTPException:
         raise
     except Exception as e:
@@ -103,7 +104,7 @@ async def get_messages(chat_id: str, request: Request):
             raise HTTPException(status_code=404, detail="Chat not found")
             
         messages = await mongodb_client.db["messages"].find({"chat_id": chat_id}).to_list(length=100)
-        return messages
+        return serialize_doc(messages)
     except HTTPException:
         raise
     except Exception as e:
