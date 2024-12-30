@@ -5,42 +5,123 @@ from http.cookies import SimpleCookie
 from webserver.config import settings
 from .base import BaseNamespace
 from ..room_manager import RoomManager
+from jose import jwt
+import json
+from datetime import datetime
+from webserver.db.memcache.connection import get_memcache_client
+from webserver.db.assistantdb.connection import get_db
+from webserver.db.assistantdb.model import UserSession, User
 
 logger = logging.getLogger(__name__)
 
 class AssistantRealtimeNamespace(BaseNamespace):
     def __init__(self, sio, connection_manager):
-        self.room_manager = RoomManager(
-            api_key=settings.OPENAI_API_KEY,  # Load from config
-            endpoint_url=settings.OPENAI_REALTIME_ENDPOINT_URL  # Load from config
-        )
         super().__init__(sio, connection_manager)
+        self.room_manager = RoomManager(
+            api_key=settings.OPENAI_API_KEY,
+            endpoint_url=settings.OPENAI_REALTIME_ENDPOINT_URL,
+            connection_manager=self.connection_manager
+        )
+        self.memcache_client = None
+        self.db = None
 
     def get_namespace(self) -> str:
         return '/assistant/realtime'
 
+    async def initialize_connections(self):
+        """Lazy initialization of database connections"""
+        if not self.memcache_client:
+            self.memcache_client = await get_memcache_client()
+        if not self.db:
+            self.db = next(get_db())
+
+    async def verify_access_token(self, access_token: str):
+        """Verify JWT access token"""
+        try:
+            payload = jwt.decode(
+                access_token,
+                settings.JWT_SECRET_KEY,
+                algorithms=[settings.JWT_ALGORITHM]
+            )
+            if payload.get("token_type") != "access":
+                return None
+            return payload
+        except:
+            return None
+
+    async def get_session_and_user(self, session_id: str):
+        """Get session and user data from cache or database"""
+        # Check cache first for session
+        cached_session = await self.memcache_client.get(f"session:{session_id}".encode())
+        if cached_session:
+            session_dict = json.loads(cached_session.decode())
+            session_data = {
+                **session_dict,
+                "session_expires": datetime.fromisoformat(session_dict["session_expires"]),
+                "access_token_expires": datetime.fromisoformat(session_dict["access_token_expires"]),
+                "refresh_token_expires": datetime.fromisoformat(session_dict["refresh_token_expires"]),
+                "created": datetime.fromisoformat(session_dict["created"]),
+                "updated": datetime.fromisoformat(session_dict["updated"]),
+            }
+            
+            # Check cache for user
+            cached_user = await self.memcache_client.get(f"user:{session_dict['user_id']}".encode())
+            if cached_user:
+                user_data = json.loads(cached_user.decode())
+                return session_data, user_data
+
+        # If not in cache, check database
+        db_session = self.db.query(UserSession).filter(UserSession.session_id == session_id).first()
+        if not db_session:
+            return None, None
+
+        db_user = self.db.query(User).filter(User.user_id == db_session.user_id).first()
+        if not db_user:
+            return None, None
+
+        session_data = db_session.to_dict()
+        user_data = db_user.to_dict()
+        
+        return session_data, user_data
+
     def register_handlers(self):
         @self.sio.on('connect', namespace=self.namespace)
         async def connect(sid: str, environ: dict, auth: dict):
-            #logger.info(f"Connect attempt - SID: {sid}")
-            #logger.info(f"Auth data: {auth}")
-            #logger.info(f"Environment: {environ}")
-            #logger.info(f"Client connected: {sid}")
+            try:
+                await self.initialize_connections()
+                
+                # Get cookies
+                cookie = environ.get('HTTP_COOKIE', '')
+                parsed_cookie = SimpleCookie(cookie)
+                parsed_cookies = {key: morsel.value for key, morsel in parsed_cookie.items()}
+                
+                access_token = parsed_cookies.get('access_token')
+                session_id = parsed_cookies.get('session_id')
 
-            cookie = environ.get('HTTP_COOKIE', '')
-            parsed_cookie = SimpleCookie(cookie)
-            parsed_cookies = {key: morsel.value for key, morsel in parsed_cookie.items()}
-            access_token = parsed_cookies.get('access_token')
-            session_id = parsed_cookies.get('session_id')
-            logger.info(f"Access token: {access_token}")
-            logger.info(f"Session ID: {session_id}")
-            
-            user_id = auth.get('user_id') if auth else None
-            if user_id:
-                self.connection_manager.add_connection(user_id, sid)
-                logger.info(f"User {user_id} connected with SID {sid}")
-            else:
-                logger.warning(f"No user_id provided in auth for SID {sid}")
+                # Verify access token
+                jwt_payload = await self.verify_access_token(access_token)
+                if not jwt_payload:
+                    logger.warning(f"Invalid access token for SID {sid}")
+                    await self.sio.disconnect(sid)
+                    return
+
+                # Get session and user data
+                session_data, user_data = await self.get_session_and_user(session_id)
+                if not session_data or not user_data:
+                    logger.warning(f"Invalid session/user data for SID {sid}")
+                    await self.sio.disconnect(sid)
+                    return
+
+                # Store user and session data in connection manager
+                self.connection_manager.add_connection(user_data['user_id'], sid, {
+                    'user': user_data,
+                    'session': session_data
+                })
+
+                logger.info(f"User {user_data['user_id']} connected with SID {sid}")
+
+            except Exception as e:
+                logger.error(f"Error in connect handler: {e}", exc_info=True)
                 await self.sio.disconnect(sid)
 
         @self.sio.on('disconnect', namespace=self.namespace)
@@ -129,7 +210,6 @@ class AssistantRealtimeNamespace(BaseNamespace):
                 logger.debug(f"[SEND MESSAGE] Starting with data: {data}")
                 room_id = data.get('room_id')
                 message = data.get('message')
-                userid = data.get('userid')
                 model = data.get('model')
 
                 
@@ -165,7 +245,7 @@ class AssistantRealtimeNamespace(BaseNamespace):
                         room.api.set_message_callback(handle_openai_response)
                         
                         logger.debug(f"[SEND MESSAGE] Sending message to room")
-                        await room.send_message(message, userid, model)
+                        await room.send_message(message, sid, model)
                         
                     except Exception as e:
                         logger.error(f"Error in send_assistant_message: {e}")

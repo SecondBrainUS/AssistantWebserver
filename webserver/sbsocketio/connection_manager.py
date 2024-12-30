@@ -6,10 +6,13 @@ class ConnectionManager:
     def __init__(self):
         self.user_sid_map = {}
         self.sid_user_map = {}
+        self.connection_data = {}
 
-    def add_connection(self, user_id: str, sid: str):
+    def add_connection(self, user_id: str, sid: str, data: dict = None):
         self.user_sid_map[user_id] = sid
         self.sid_user_map[sid] = user_id
+        if data:
+            self.connection_data[sid] = data
         logger.info(f"Added connection: user_id={user_id}, sid={sid}")
 
     def remove_connection(self, sid: str):
@@ -27,3 +30,8 @@ class ConnectionManager:
 
     def get_user_id(self, sid: str):
         return self.sid_user_map.get(sid)
+
+    def get_connection_data(self, user_id: str) -> dict:
+        logger.info(f"[GET CONNECTION DATA] Getting connection data for user {user_id}")
+        sid = self.user_sid_map.get(user_id)
+        return self.connection_data.get(sid) if sid else None

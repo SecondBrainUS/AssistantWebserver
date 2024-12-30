@@ -46,6 +46,7 @@ class Room:
         room_id: str,
         api_key: str,
         endpoint_url: str,
+        connection_manager,
         auto_execute_functions: bool = False,
     ):
         self.room_id = room_id
@@ -53,6 +54,7 @@ class Room:
         self.api.set_auto_execute_functions(auto_execute_functions)
         self.connected_users: set[str] = set()
         self.message_count = 0
+        self.connection_manager = connection_manager
 
         # Initialize AssistantFunctions
         self.assistant_functions = AssistantFunctions(
@@ -201,9 +203,16 @@ class Room:
                 }
             )
 
-    async def send_message(self, message: dict, userid: str, model: str) -> None:
+    async def send_message(self, message: dict, sid: str, model: str) -> None:
         """Send a message to the OpenAI API."""
         try:
+            # Get user data from connection manager if needed
+            logger.info(f"[SEND MESSAGE] Getting user data for socket {sid}")
+            userid = self.connection_manager.get_user_id(sid)
+            if not userid:
+                logger.error(f"No user data found for user {userid}")
+                return
+
             # If not a user conversation message, just send it to the API
             if message.get("type") != "conversation.item.create":
                 logger.info(f"[SEND MESSAGE] Not a conversation.item.create")
@@ -310,10 +319,11 @@ class Room:
 
 
 class RoomManager:
-    def __init__(self, api_key: str, endpoint_url: str):
+    def __init__(self, api_key: str, endpoint_url: str, connection_manager):
         self.rooms: Dict[str, Room] = {}
         self.api_key = api_key
         self.endpoint_url = endpoint_url
+        self.connection_manager = connection_manager
 
     async def create_room(self, room_id: str) -> bool:
         """Create a new room with OpenAI API instance"""
@@ -321,7 +331,7 @@ class RoomManager:
             logger.warning(f"Room {room_id} already exists")
             return False
 
-        room = Room(room_id, self.api_key, self.endpoint_url)
+        room = Room(room_id, self.api_key, self.endpoint_url, self.connection_manager)
         success = await room.initialize()
 
         if success:
