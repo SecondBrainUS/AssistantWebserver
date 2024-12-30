@@ -11,6 +11,7 @@ from webserver.db.chatdb.db import mongodb_client
 from webserver.sbsocketio.connection_manager import ConnectionManager
 from bson import Binary
 from uuid import UUID
+from webserver.db.chatdb.uuid_utils import uuid_to_binary, ensure_uuid
 logger = logging.getLogger(__name__)
 
 
@@ -18,11 +19,12 @@ async def save_message(message: dict):
     """Save a message to the database"""
     message_id = message["message_id"]
     try:
-        # Convert UUID fields to Binary format
-        if isinstance(message_id, (str, UUID)):
-            message["message_id"] = Binary.from_uuid(UUID(str(message_id)))
-        if "chat_id" in message and isinstance(message["chat_id"], (str, UUID)):
-            message["chat_id"] = Binary.from_uuid(UUID(str(message["chat_id"])))
+        # Use our utility function that handles the conversion properly
+        message["message_id"] = uuid_to_binary(message_id)
+        if "chat_id" in message:
+            message["chat_id"] = uuid_to_binary(message["chat_id"])
+        if "user_id" in message:
+            message["user_id"] = ensure_uuid(message["user_id"])
             
         messages_collection = mongodb_client.db["messages"]
         await messages_collection.insert_one(message)
@@ -32,16 +34,17 @@ async def save_message(message: dict):
         logger.error(
             f"Error saving message for message_id {message_id}: {e}", exc_info=True
         )
-        return {"error": e}
+        return {"error": str(e)}
 
 
 async def save_chat(chat: dict):
     """Save a chat to the database"""
     chat_id = chat["chat_id"]
     try:
-        # Convert the chat_id UUID to Binary format if it's a UUID
-        if isinstance(chat_id, (str, UUID)):
-            chat["chat_id"] = Binary.from_uuid(UUID(str(chat_id)))
+        # Use our utility function that handles the conversion properly
+        chat["chat_id"] = uuid_to_binary(chat_id)
+        if "user_id" in chat:
+            chat["user_id"] = ensure_uuid(chat["user_id"])
             
         chats_collection = mongodb_client.db["chats"]
         await chats_collection.insert_one(chat)
@@ -49,7 +52,7 @@ async def save_chat(chat: dict):
         return {"success": True, "chat_id": chat_id}
     except Exception as e:
         logger.error(f"Error saving chat for chat_id {chat_id}: {e}", exc_info=True)
-        return {"error": e}
+        return {"error": str(e)}
 
 
 class Room:

@@ -1,6 +1,8 @@
 import logging
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import CollectionInvalid
+from bson.codec_options import CodecOptions
+from bson.binary import UuidRepresentation
 from webserver.config import settings
 
 logger = logging.getLogger(__name__)
@@ -12,8 +14,21 @@ class MongoDBClient:
 
     async def connect(self):
         logger.info(f"Connecting to MongoDB at {settings.MONGODB_URI}...")
-        self.client = AsyncIOMotorClient(settings.MONGODB_URI)
-        self.db = self.client[settings.MONGODB_DB_NAME]
+        
+        # Create client with UUID representation specified
+        self.client = AsyncIOMotorClient(
+            settings.MONGODB_URI,
+            uuidRepresentation='standard'
+        )
+        
+        # Get database with proper codec options
+        db = self.client[settings.MONGODB_DB_NAME]
+        self.db = db.with_options(
+            codec_options=CodecOptions(
+                uuid_representation=UuidRepresentation.STANDARD
+            )
+        )
+        
         logger.info("MongoDB connection established.")
 
         # Create collections and indexes
@@ -26,7 +41,13 @@ class MongoDBClient:
             self.client.close()
 
     async def get_collection(self, name: str):
-        return self.db[name]
+        # Ensure collections also have the proper codec options
+        collection = self.db[name]
+        return collection.with_options(
+            codec_options=CodecOptions(
+                uuid_representation=UuidRepresentation.STANDARD
+            )
+        )
 
     async def create_collections(self):
         try:
@@ -37,8 +58,8 @@ class MongoDBClient:
             logger.info("Collections already exist.")
 
     async def create_indexes(self):
-        chats = self.db["chats"]
-        messages = self.db["messages"]
+        chats = await self.get_collection("chats")
+        messages = await self.get_collection("messages")
 
         await chats.create_index([("participant_user_ids", 1), ("last_message_at", -1)], background=True)
         await chats.create_index([("owner_user_id", 1)], background=True)
