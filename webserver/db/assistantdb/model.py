@@ -18,6 +18,17 @@ class User(Base):
     created = Column(DateTime, default=func.now())
     updated = Column(DateTime, default=func.now(), onupdate=func.now())
 
+    def to_dict(self):
+        return {
+            "user_id": self.user_id,
+            "email": self.email,
+            "auth_type": self.auth_type,
+            "picture": self.picture,
+            "name": self.name,
+            "created": self.created,
+            "updated": self.updated,
+        }
+
 class AuthGoogle(Base):
     __tablename__ = "auth_google"
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id"), primary_key=True)
@@ -27,6 +38,17 @@ class AuthGoogle(Base):
     token_expiry = Column(String, nullable=True)
     created = Column(DateTime, default=func.now())
     updated = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    def to_dict(self):
+        return {
+            "user_id": self.user_id,
+            "google_user_id": self.google_user_id,
+            "access_token": self.access_token,
+            "refresh_token": self.refresh_token,
+            "token_expiry": self.token_expiry,
+            "created": self.created,
+            "updated": self.updated,
+        }
 
 class UserSession(Base):
     __tablename__ = "user_sessions"
@@ -39,3 +61,16 @@ class UserSession(Base):
     session_expires = Column(DateTime, nullable=False)
     created = Column(DateTime, default=func.now())
     updated = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    def to_dict(self):
+        return {
+            "session_id": self.session_id,
+            "user_id": self.user_id,
+            "access_token": self.access_token,
+            "refresh_token": self.refresh_token,
+            "session_expires": self.session_expires,
+            "access_token_expires": self.access_token_expires,
+            "refresh_token_expires": self.refresh_token_expires,
+            "created": self.created,
+            "updated": self.updated,
+        }

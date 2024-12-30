@@ -1,18 +1,21 @@
 import logging
-from fastapi import APIRouter, Query, HTTPException, status
+from fastapi import APIRouter, Query, HTTPException, status, Depends, Request
 from fastapi.responses import JSONResponse
 from webserver.config import settings
 from webserver.db.chatdb.db import mongodb_client
 from typing import Optional
+from webserver.api.dependencies import verify_access_token, get_session
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-@router.get("/", 
+@router.get("", 
     summary="Retrieve paginated chats",
-    response_description="List of chat documents sorted by creation date")
+    response_description="List of chat documents sorted by creation date",
+    dependencies=[Depends(verify_access_token), Depends(get_session)])
 async def get_chats(
+    request: Request,
     limit: Optional[int] = Query(
         default=20,
         ge=1,
@@ -41,12 +44,14 @@ async def get_chats(
     Raises:
         HTTPException: If database operation fails
     """
+
+    user_id = request.state.user["user_id"]
     try:
         # Get total count for pagination info
-        total_chats = await mongodb_client.db["chats"].count_documents({})
+        total_chats = await mongodb_client.db["chats"].count_documents({"user_id": user_id})
         
-        # Fetch paginated chats
-        chats = await mongodb_client.db["chats"].find() \
+        # Fetch paginated chats for this user
+        chats = await mongodb_client.db["chats"].find({"user_id": user_id}) \
             .sort("created_at", -1) \
             .skip(offset) \
             .limit(limit) \
@@ -68,22 +73,39 @@ async def get_chats(
             detail="Failed to fetch chats from database"
         )
 
-
-@router.get("/{chat_id}")
-async def get_chat(chat_id: str):
+@router.get("/{chat_id}", dependencies=[Depends(verify_access_token), Depends(get_session)])
+async def get_chat(chat_id: str, request: Request):
+    user_id = request.state.user["user_id"]
     try:
-        chat = await mongodb_client.db["chats"].find_one({"chat_id": chat_id})
+        chat = await mongodb_client.db["chats"].find_one({
+            "chat_id": chat_id,
+            "user_id": user_id
+        })
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found")
         return chat
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting chat for chat_id {chat_id}: {e}", exc_info=True)
-        return {"error": e}
+        raise HTTPException(status_code=500, detail="Internal server error")
 
-@router.get("/{chat_id}/messages")
-async def get_messages(chat_id: str):
+@router.get("/{chat_id}/messages", dependencies=[Depends(verify_access_token), Depends(get_session)])
+async def get_messages(chat_id: str, request: Request):
+    user_id = request.state.user["user_id"]
     try:
+        # First verify the chat belongs to the user
+        chat = await mongodb_client.db["chats"].find_one({
+            "chat_id": chat_id,
+            "user_id": user_id
+        })
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found")
+            
         messages = await mongodb_client.db["messages"].find({"chat_id": chat_id}).to_list(length=100)
         return messages
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting messages for chat_id {chat_id}: {e}", exc_info=True)
-        return {"error": e}
-
+        raise HTTPException(status_code=500, detail="Internal server error")

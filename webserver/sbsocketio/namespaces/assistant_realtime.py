@@ -1,6 +1,7 @@
 import logging
 import traceback
 from typing import Optional
+from http.cookies import SimpleCookie
 from webserver.config import settings
 from .base import BaseNamespace
 from ..room_manager import RoomManager
@@ -19,6 +20,38 @@ class AssistantRealtimeNamespace(BaseNamespace):
         return '/assistant/realtime'
 
     def register_handlers(self):
+        @self.sio.on('connect', namespace=self.namespace)
+        async def connect(sid: str, environ: dict, auth: dict):
+            #logger.info(f"Connect attempt - SID: {sid}")
+            #logger.info(f"Auth data: {auth}")
+            #logger.info(f"Environment: {environ}")
+            #logger.info(f"Client connected: {sid}")
+
+            cookie = environ.get('HTTP_COOKIE', '')
+            parsed_cookie = SimpleCookie(cookie)
+            parsed_cookies = {key: morsel.value for key, morsel in parsed_cookie.items()}
+            access_token = parsed_cookies.get('access_token')
+            session_id = parsed_cookies.get('session_id')
+            logger.info(f"Access token: {access_token}")
+            logger.info(f"Session ID: {session_id}")
+            
+            user_id = auth.get('user_id') if auth else None
+            if user_id:
+                self.connection_manager.add_connection(user_id, sid)
+                logger.info(f"User {user_id} connected with SID {sid}")
+            else:
+                logger.warning(f"No user_id provided in auth for SID {sid}")
+                await self.sio.disconnect(sid)
+
+        @self.sio.on('disconnect', namespace=self.namespace)
+        async def disconnect(sid: str):
+            logger.info(f"Client disconnected: {sid}")
+            user_id = self.connection_manager.remove_connection(sid)
+            if user_id:
+                logger.info(f"User {user_id} disconnected")
+            else:
+                logger.warning(f"No user_id found for SID {sid} on disconnect")
+
         @self.sio.on('create_room', namespace=self.namespace)
         async def create_assistant_room(sid: str, data: dict):
             room_id = data.get('room_id')

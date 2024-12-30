@@ -8,7 +8,7 @@ class DefaultNamespace(BaseNamespace):
         return '/'  # Default namespace
 
     def register_handlers(self):
-        @self.sio.event
+        @self.sio.on('connect', namespace=self.namespace)
         async def connect(sid: str, environ: dict, auth: dict):
             logger.info(f"Connect attempt - SID: {sid}")
             logger.info(f"Auth data: {auth}")
@@ -23,7 +23,7 @@ class DefaultNamespace(BaseNamespace):
                 logger.warning(f"No user_id provided in auth for SID {sid}")
                 await self.sio.disconnect(sid)
 
-        @self.sio.event
+        @self.sio.on('disconnect', namespace=self.namespace)
         async def disconnect(sid: str):
             logger.info(f"Client disconnected: {sid}")
             user_id = self.connection_manager.remove_connection(sid)
