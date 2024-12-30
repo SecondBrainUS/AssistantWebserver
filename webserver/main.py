@@ -6,7 +6,12 @@ from webserver.sbsocketio import sio_app
 from starlette.middleware.sessions import SessionMiddleware
 from webserver.config import settings
 from webserver.db.chatdb.db import mongodb_client
+import logging
 import uvicorn
+
+logging.getLogger('socketio.server').setLevel(logging.WARNING)
+logging.getLogger('engineio.server').setLevel(logging.WARNING)
+logging.getLogger('pymongo').setLevel(logging.WARNING)
 
 app = FastAPI()
 

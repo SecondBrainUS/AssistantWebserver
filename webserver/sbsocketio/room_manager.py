@@ -8,7 +8,9 @@ from assistant_realtime_openai import OpenAIRealTimeAPI
 from assistant_functions import AssistantFunctions
 from webserver.config import settings
 from webserver.db.chatdb.db import mongodb_client
-
+from webserver.sbsocketio.connection_manager import ConnectionManager
+from bson import Binary
+from uuid import UUID
 logger = logging.getLogger(__name__)
 
 
@@ -16,6 +18,12 @@ async def save_message(message: dict):
     """Save a message to the database"""
     message_id = message["message_id"]
     try:
+        # Convert UUID fields to Binary format
+        if isinstance(message_id, (str, UUID)):
+            message["message_id"] = Binary.from_uuid(UUID(str(message_id)))
+        if "chat_id" in message and isinstance(message["chat_id"], (str, UUID)):
+            message["chat_id"] = Binary.from_uuid(UUID(str(message["chat_id"])))
+            
         messages_collection = mongodb_client.db["messages"]
         await messages_collection.insert_one(message)
         logger.info(f"Message saved for message_id {message_id}")
@@ -31,6 +39,10 @@ async def save_chat(chat: dict):
     """Save a chat to the database"""
     chat_id = chat["chat_id"]
     try:
+        # Convert the chat_id UUID to Binary format if it's a UUID
+        if isinstance(chat_id, (str, UUID)):
+            chat["chat_id"] = Binary.from_uuid(UUID(str(chat_id)))
+            
         chats_collection = mongodb_client.db["chats"]
         await chats_collection.insert_one(chat)
         logger.info(f"Chat saved for chat_id {chat_id}")
@@ -46,7 +58,7 @@ class Room:
         room_id: str,
         api_key: str,
         endpoint_url: str,
-        connection_manager,
+        connection_manager: ConnectionManager,
         auto_execute_functions: bool = False,
     ):
         self.room_id = room_id
@@ -55,6 +67,7 @@ class Room:
         self.connected_users: set[str] = set()
         self.message_count = 0
         self.connection_manager = connection_manager
+        self.chat_id: Optional[str] = None
 
         # Initialize AssistantFunctions
         self.assistant_functions = AssistantFunctions(
@@ -141,12 +154,6 @@ class Room:
 
             logger.debug(f"Received OpenAI event in room {self.room_id}: {event_type}")
 
-            # Special handling for tool call results and summaries
-            # if event_type == "tool_call.result":
-            #     logger.debug(f"Tool call result received in room {self.room_id}")
-            #     # Tool results are handled internally by OpenAI API
-            #     return
-
             # Broadcast the event to room members
             if self._message_callback:
                 await self._message_callback(
@@ -154,6 +161,69 @@ class Room:
                 )
             else:
                 logger.warning(f"No message callback set for room {self.room_id}")
+
+            if event_type == "response.done":
+                response = event.get('response')
+                if not response:
+                    logger.error(f"No response found in event {event}")
+                    return
+                output = response.get('output')
+                if not output:
+                    logger.error(f"No output found in response {response}")
+                    return
+                response_message = None
+                if len(output) > 1:
+                    logger.warning(f"[OPENAI EVENT] [RESPONSE.DONE] Multiple outputs found in response {response}")
+                    response_message = output[0]
+                elif len(output) == 1:
+                    response_message = output[0]
+                else:
+                    logger.error(f"[OPENAI EVENT] [RESPONSE.DONE] No output found in response {response}")
+                    return
+                #   type": "function_call",
+                if response_message.get('type') == "message":
+                    response_message_content = response_message.get('content')
+                    if not response_message_content:
+                        logger.error(f"[OPENAI EVENT] [RESPONSE.DONE] No content found in response message {response_message}")
+                        return
+                    response_message_text = response_message_content.get('text')
+                    response_message_type = response_message.get('type')
+
+                    messageid = str(uuid.uuid4())
+                    created_timestamp = datetime.now()
+                    role = response_message.get('role')
+                    model = "OpenAI Real Time GPT-4o"
+                    usage = event.get('usage')
+                    save_message_result = await save_message({ 
+                        "message_id": messageid,
+                        "chat_id": self.chat_id,
+                        "model": model,
+                        "created_timestamp": created_timestamp,
+                        "role": role,
+                        "content": response_message_text,
+                        "modality": response_message_type,
+                        "type": "message",
+                        "usage": usage,
+                    })
+                if response_message.get('type') == "function_call":
+                    messageid = str(uuid.uuid4())
+                    created_timestamp = datetime.now()
+                    role = "system"
+                    model = "OpenAI Real Time GPT-4o"
+                    usage = event.get('usage')
+                    save_message_result = await save_message({ 
+                        "message_id": messageid,
+                        "chat_id": self.chat_id,
+                        "model": model,
+                        "created_timestamp": created_timestamp,
+                        "role": role,
+                        "type": "function_call",
+                        "usage": usage,
+                        "name": response_message.get('name'),
+                        "arguments": response_message.get('arguments'),
+                        "callid": response_message.get('callid'),
+                    })
+                    return
 
         except json.JSONDecodeError as e:
             logger.error(f"Error parsing OpenAI event in room {self.room_id}: {e}")
@@ -223,8 +293,8 @@ class Room:
 
             logger.info(f"[SEND MESSAGE] ", message)
 
-            chat_id = message.get("chat_id")
-            if not chat_id:
+            # chat_id = message.get("chat_id")
+            if not self.chat_id:
                 # TODO: add background task to name the chat by LLM, update the chat with the name by ID
                 chat_id = str(uuid.uuid4())
                 chat = {
@@ -232,7 +302,7 @@ class Room:
                     "user_id": userid,
                     "created_timestamp": datetime.now(),
                 }
-
+                self.chat_id = chat_id
                 save_chat_result = await save_chat(chat)
                 if save_chat_result.get("success"):
                     logger.info(f"[SEND MESSAGE] Saved chat")
@@ -278,13 +348,14 @@ class Room:
             save_message_result = await save_message(
                 {
                     "message_id": messageid,
-                    "chat_id": chat_id,
+                    "chat_id": self.chat_id,
                     "user_id": userid,
                     "model": model,
                     "created_timestamp": created_timestamp,
                     "role": role,
                     "content": chat_message_content,
                     "modality": modality,
+                    "type": "message",
                 }
             )
 
