@@ -6,6 +6,7 @@ from webserver.db.chatdb.db import mongodb_client
 from typing import Optional
 from webserver.api.dependencies import verify_access_token, get_session
 from webserver.db.chatdb.utils import serialize_doc
+from webserver.db.chatdb.uuid_utils import uuid_to_binary, ensure_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -78,15 +79,17 @@ async def get_chats(
 async def get_chat(chat_id: str, request: Request):
     user_id = request.state.user["user_id"]
     try:
+        # Convert chat_id to Binary for query
+        chat_id_binary = uuid_to_binary(chat_id)
         chat = await mongodb_client.db["chats"].find_one({
-            "chat_id": chat_id,
+            "chat_id": chat_id_binary,
             "user_id": user_id
         })
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
         return serialize_doc(chat)
-    except HTTPException:
-        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Invalid chat ID format")
     except Exception as e:
         logger.error(f"Error getting chat for chat_id {chat_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -95,18 +98,21 @@ async def get_chat(chat_id: str, request: Request):
 async def get_messages(chat_id: str, request: Request):
     user_id = request.state.user["user_id"]
     try:
+        # Convert chat_id to Binary for queries
+        chat_id_binary = uuid_to_binary(chat_id)
+        
         # First verify the chat belongs to the user
         chat = await mongodb_client.db["chats"].find_one({
-            "chat_id": chat_id,
+            "chat_id": chat_id_binary,
             "user_id": user_id
         })
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
             
-        messages = await mongodb_client.db["messages"].find({"chat_id": chat_id}).to_list(length=100)
+        messages = await mongodb_client.db["messages"].find({"chat_id": chat_id_binary}).to_list(length=100)
         return serialize_doc(messages)
-    except HTTPException:
-        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Invalid chat ID format")
     except Exception as e:
         logger.error(f"Error getting messages for chat_id {chat_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
