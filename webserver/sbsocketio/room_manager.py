@@ -11,6 +11,7 @@ from webserver.db.chatdb.db import mongodb_client
 from webserver.sbsocketio.connection_manager import ConnectionManager
 from bson import Binary
 from uuid import UUID
+from webserver.db.chatdb.uuid_utils import uuid_to_binary, ensure_uuid
 logger = logging.getLogger(__name__)
 
 
@@ -18,20 +19,16 @@ async def save_message(message: dict):
     """Save a message to the database"""
     message_id = message["message_id"]
     try:
-        # Convert UUID fields to Binary format
-        if isinstance(message_id, (str, UUID)):
-            message["message_id"] = Binary.from_uuid(UUID(str(message_id)))
-        if "chat_id" in message and isinstance(message["chat_id"], (str, UUID)):
-            message["chat_id"] = Binary.from_uuid(UUID(str(message["chat_id"])))
-            
+        # Convert UUIDs to Binary format
+        message["message_id"] = uuid_to_binary(message_id)
+        message["chat_id"] = uuid_to_binary(message["chat_id"])
+        
         messages_collection = mongodb_client.db["messages"]
         await messages_collection.insert_one(message)
         logger.info(f"Message saved for message_id {message_id}")
-        return {"success": True, "message_id": message_id}
+        return {"success": True, "message_id": str(ensure_uuid(message_id))}
     except Exception as e:
-        logger.error(
-            f"Error saving message for message_id {message_id}: {e}", exc_info=True
-        )
+        logger.error(f"Error saving message for message_id {message_id}: {e}", exc_info=True)
         return {"error": e}
 
 
@@ -39,14 +36,13 @@ async def save_chat(chat: dict):
     """Save a chat to the database"""
     chat_id = chat["chat_id"]
     try:
-        # Convert the chat_id UUID to Binary format if it's a UUID
-        if isinstance(chat_id, (str, UUID)):
-            chat["chat_id"] = Binary.from_uuid(UUID(str(chat_id)))
-            
+        # Convert the chat_id to Binary format
+        chat["chat_id"] = uuid_to_binary(chat_id)
+        
         chats_collection = mongodb_client.db["chats"]
         await chats_collection.insert_one(chat)
         logger.info(f"Chat saved for chat_id {chat_id}")
-        return {"success": True, "chat_id": chat_id}
+        return {"success": True, "chat_id": str(ensure_uuid(chat_id))}
     except Exception as e:
         logger.error(f"Error saving chat for chat_id {chat_id}: {e}", exc_info=True)
         return {"error": e}
@@ -83,9 +79,26 @@ class Room:
             sensor_values_group_id=settings.SENSOR_VALUES_CRITTENDEN_GROUP_ID,
         )
 
-        # Store message callback for broadcasting
-        self._message_callback = None
-        self._message_error_callback = None
+        # Initialize event system
+        self._event_handlers = {
+            "message": [],
+            "error": [],
+            "chat_created": [],
+            "function_call": [],
+            "response_complete": []
+        }
+
+    def add_event_handler(self, event_type: str, handler: callable) -> None:
+        """Register a new event handler for the specified event type"""
+        if event_type not in self._event_handlers:
+            self._event_handlers[event_type] = []
+        self._event_handlers[event_type].append(handler)
+
+    async def _dispatch_event(self, event_type: str, data: dict) -> None:
+        """Dispatch an event to all registered handlers"""
+        if event_type in self._event_handlers:
+            for handler in self._event_handlers[event_type]:
+                await handler(data)
 
     async def initialize(self):
         """Initialize the OpenAI API connection and set up event handlers"""
@@ -154,23 +167,25 @@ class Room:
 
             logger.debug(f"Received OpenAI event in room {self.room_id}: {event_type}")
 
-            # Broadcast the event to room members
-            if self._message_callback:
-                await self._message_callback(
-                    {"event_type": event_type, "data": event, "room_id": self.room_id}
-                )
-            else:
-                logger.warning(f"No message callback set for room {self.room_id}")
+            # Dispatch the raw event to handlers
+            await self._dispatch_event("message", {
+                "event_type": event_type,
+                "data": event,
+                "room_id": self.room_id
+            })
 
+            # Process response.done events
             if event_type == "response.done":
                 response = event.get('response')
                 if not response:
                     logger.error(f"No response found in event {event}")
                     return
+                    
                 output = response.get('output')
                 if not output:
                     logger.error(f"No output found in response {response}")
                     return
+
                 response_message = None
                 if len(output) > 1:
                     logger.warning(f"[OPENAI EVENT] [RESPONSE.DONE] Multiple outputs found in response {response}")
@@ -180,76 +195,93 @@ class Room:
                 else:
                     logger.error(f"[OPENAI EVENT] [RESPONSE.DONE] No output found in response {response}")
                     return
-                #   type": "function_call",
-                if response_message.get('type') == "message":
-                    response_message_content = response_message.get('content')
-                    if not response_message_content:
-                        logger.error(f"[OPENAI EVENT] [RESPONSE.DONE] No content found in response message {response_message}")
-                        return
-                    response_message_text = response_message_content.get('text')
-                    response_message_type = response_message.get('type')
 
-                    messageid = str(uuid.uuid4())
-                    created_timestamp = datetime.now()
-                    role = response_message.get('role')
-                    model = "OpenAI Real Time GPT-4o"
-                    usage = event.get('usage')
-                    save_message_result = await save_message({ 
-                        "message_id": messageid,
-                        "chat_id": self.chat_id,
-                        "model": model,
-                        "created_timestamp": created_timestamp,
-                        "role": role,
-                        "content": response_message_text,
-                        "modality": response_message_type,
-                        "type": "message",
-                        "usage": usage,
+                if response_message.get('type') == "message":
+                    # Process text message
+                    await self._handle_text_message(response_message, event)
+                    await self._dispatch_event("response_complete", {
+                        "message": response_message,
+                        "usage": event.get('usage')
                     })
-                if response_message.get('type') == "function_call":
-                    messageid = str(uuid.uuid4())
-                    created_timestamp = datetime.now()
-                    role = "system"
-                    model = "OpenAI Real Time GPT-4o"
-                    usage = event.get('usage')
-                    save_message_result = await save_message({ 
-                        "message_id": messageid,
-                        "chat_id": self.chat_id,
-                        "model": model,
-                        "created_timestamp": created_timestamp,
-                        "role": role,
-                        "type": "function_call",
-                        "usage": usage,
-                        "name": response_message.get('name'),
-                        "arguments": response_message.get('arguments'),
-                        "callid": response_message.get('callid'),
+
+                elif response_message.get('type') == "function_call":
+                    # Process function call
+                    await self._handle_function_call(response_message, event)
+                    await self._dispatch_event("function_call", {
+                        "function_call": response_message,
+                        "usage": event.get('usage')
                     })
-                    return
 
         except json.JSONDecodeError as e:
             logger.error(f"Error parsing OpenAI event in room {self.room_id}: {e}")
+            await self._dispatch_event("error", {"error": str(e)})
         except Exception as e:
             logger.error(
                 f"Error handling OpenAI event in room {self.room_id}: {e}",
                 exc_info=True,
             )
+            await self._dispatch_event("error", {"error": str(e)})
 
-    async def _handle_openai_error(
-        self, error: str, event: Optional[dict] = None
-    ) -> None:
+    async def _handle_text_message(self, response_message: dict, event: dict):
+        """Handle text message responses"""
+        response_message_content = response_message.get('content')
+        if not response_message_content:
+            logger.error(f"No content found in response message {response_message}")
+            return
+            
+        response_message_text = response_message_content.get('text')
+        response_message_type = response_message.get('type')
+
+        messageid = str(uuid.uuid4())
+        created_timestamp = datetime.now()
+        role = response_message.get('role')
+        model = "OpenAI Real Time GPT-4"
+        usage = event.get('usage')
+        
+        await save_message({ 
+            "message_id": messageid,
+            "chat_id": self.chat_id,
+            "model": model,
+            "created_timestamp": created_timestamp,
+            "role": role,
+            "content": response_message_text,
+            "modality": response_message_type,
+            "type": "message",
+            "usage": usage,
+        })
+
+    async def _handle_function_call(self, response_message: dict, event: dict):
+        """Handle function call responses"""
+        messageid = str(uuid.uuid4())
+        created_timestamp = datetime.now()
+        role = "system"
+        model = "OpenAI Real Time GPT-4"
+        usage = event.get('usage')
+        
+        await save_message({ 
+            "message_id": messageid,
+            "chat_id": self.chat_id,
+            "model": model,
+            "created_timestamp": created_timestamp,
+            "role": role,
+            "type": "function_call",
+            "usage": usage,
+            "name": response_message.get('name'),
+            "arguments": response_message.get('arguments'),
+            "callid": response_message.get('callid'),
+        })
+
+    async def _handle_openai_error(self, error: str, event: Optional[dict] = None) -> None:
         """Handle errors from OpenAI."""
         logger.error(f"OpenAI error in room {self.room_id}: {error}")
         if event:
             logger.debug(f"Error event details: {event}")
 
-        # Broadcast error to room members if callback is set
-        if self._message_callback:
-            await self._message_callback(
-                {
-                    "event_type": "error",
-                    "data": {"error": error, "event": event},
-                    "room_id": self.room_id,
-                }
-            )
+        await self._dispatch_event("error", {
+            "error": error,
+            "event": event,
+            "room_id": self.room_id
+        })
 
     async def _handle_message_error(
         self,
@@ -283,17 +315,17 @@ class Room:
                 logger.error(f"No user data found for user {userid}")
                 return
 
-            # If not a user conversation message, just send it to the API
-            if message.get("type") != "conversation.item.create":
-                logger.info(f"[SEND MESSAGE] Not a conversation.item.create")
+            logger.info(f"[SEND MESSAGE] Raw chat message: {message}")
+
+            # Handle non-conversation messages differently
+            if message.get("type") not in ["message", "conversation.item.create"]:
+                logger.info(f"[SEND MESSAGE] Special event type: {message.get('type')}")
                 await self.api.send_event(
-                    event_type=message["type"], data=message.get("data", {})
+                    event_type=message["type"], 
+                    data=message.get("data", {})
                 )
                 return
 
-            logger.info(f"[SEND MESSAGE] ", message)
-
-            # chat_id = message.get("chat_id")
             if not self.chat_id:
                 # TODO: add background task to name the chat by LLM, update the chat with the name by ID
                 chat_id = str(uuid.uuid4())
@@ -306,13 +338,11 @@ class Room:
                 save_chat_result = await save_chat(chat)
                 if save_chat_result.get("success"):
                     logger.info(f"[SEND MESSAGE] Saved chat")
-                    # Emit chat_created event with the new chat_id
-                    if self._message_callback:
-                        await self._message_callback({
-                            "event_type": "chat_created",
-                            "data": {"chat_id": chat_id},
-                            "room_id": self.room_id
-                        })
+                    # Emit chat_created event
+                    await self._dispatch_event("chat_created", {
+                        "chat_id": chat_id,
+                        "room_id": self.room_id
+                    })
                 else:
                     logger.error(f"[SEND MESSAGE] Error saving chat: {save_chat_result.get('error')}")
                     return
@@ -322,25 +352,36 @@ class Room:
             auto_execute = message.get("auto_execute_functions", False)
             self.api.set_auto_execute_functions(auto_execute)
 
-            raw_chat_message = message["data"]["item"]
+            # Get the content based on message type
+            content = None
+            if message.get("type") == "message":
+                content = message.get("content", [])
+            else:  # conversation.item.create
+                item = message.get("data", {}).get("item", {})
+                content = item.get("content", [])
 
-            # Verify message type and content type
-            if raw_chat_message["type"] != "conversation.item.create":
+            # Verify content
+            if not content or not isinstance(content, list):
+                logger.error(f"[SEND MESSAGE] Invalid content format: {message}")
+                await self._dispatch_event("error", {
+                    "error": "Invalid content format",
+                    "room_id": self.room_id
+                })
+                return
+
+            content_item = content[0]
+            if content_item["type"] != "input_text":
                 logger.error(
-                    f"[SEND MESSAGE] Message is not a conversation.item.create: {raw_chat_message['type']}"
+                    f"[SEND MESSAGE] Message is not an input_text: {content_item['type']}"
                 )
-                # await self._handle_message_error("Invalid message type", message=message, sender_sid=message.get("sender_sid"))
-                # return
-            if raw_chat_message["content"][0]["type"] != "input_text":
-                logger.error(
-                    f"[SEND MESSAGE] Message is not an input_text: {raw_chat_message['content'][0]['type']}"
-                )
-                # await self._handle_message_error("Invalid content type", message=message, sender_sid=message.get("sender_sid"))
-                # return
+                await self._dispatch_event("error", {
+                    "error": "Invalid content type",
+                    "room_id": self.room_id
+                })
+                return
 
-            chat_message_content = raw_chat_message["content"][0]["text"]
-
-            role = "user"
+            chat_message_content = content_item["text"]
+            role = message.get("role", "user")
             messageid = str(uuid.uuid4())
             created_timestamp = datetime.now()
             modality = "text"
@@ -359,15 +400,39 @@ class Room:
                 }
             )
 
-            # Send the actual message
-            logger.info(f"[SEND MESSAGE] HERE FUCKING NOTHING {message}")
-            await self.api.send_event(
-                event_type=message["type"], data=message.get("data", {})
-            )
+            # Send the actual message to OpenAI
+            logger.info(f"[SEND MESSAGE] Sending message to OpenAI API")
+            if message.get("type") == "message":
+                # Convert to OpenAI format if needed
+                openai_message = {
+                    "type": "conversation.item.create",
+                    "data": {
+                        "item": {
+                            "role": role,
+                            "content": content,
+                            "type": "message"
+                        }
+                    }
+                }
+                await self.api.send_event(
+                    event_type="conversation.item.create",
+                    data=openai_message.get("data", {})
+                )
+            else:
+                # Already in OpenAI format
+                await self.api.send_event(
+                    event_type=message["type"],
+                    data=message.get("data", {})
+                )
+
         except Exception as e:
             logger.error(
                 f"Error sending message in room {self.room_id}: {e}", exc_info=True
             )
+            await self._dispatch_event("error", {
+                "error": str(e),
+                "room_id": self.room_id
+            })
             raise
 
     def add_user(self, sid: str):
