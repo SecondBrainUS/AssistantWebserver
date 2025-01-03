@@ -125,3 +125,41 @@ async def get_messages(chat_id: str, request: Request):
     except Exception as e:
         logger.error(f"Error getting messages for chat_id {chat_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.delete("/{chat_id}", dependencies=[Depends(verify_access_token), Depends(get_session)])
+async def delete_chat(chat_id: str, request: Request):
+    user_id = request.state.user["user_id"]
+    user_id = ensure_uuid(user_id)  # Convert to string UUID
+    chat_id = ensure_uuid(chat_id)  # Convert to string UUID
+    
+    try:
+        # First verify the chat belongs to the user
+        chat = await mongodb_client.db["chats"].find_one({
+            "chat_id": chat_id,
+            "user_id": user_id
+        })
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found")
+            
+        # Delete messages first
+        await mongodb_client.db["messages"].delete_many({"chat_id": chat_id})
+        
+        # Then delete the chat
+        result = await mongodb_client.db["chats"].delete_one({
+            "chat_id": chat_id,
+            "user_id": user_id
+        })
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Chat not found")
+            
+        return JSONResponse(
+            content={"message": "Chat deleted successfully"},
+            status_code=status.HTTP_200_OK
+        )
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Invalid chat ID format")
+    except Exception as e:
+        logger.error(f"Error deleting chat {chat_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
