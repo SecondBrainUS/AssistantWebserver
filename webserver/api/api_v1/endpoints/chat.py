@@ -48,21 +48,25 @@ async def get_chats(
     """
 
     user_id = request.state.user["user_id"]
-    user_id_binary = uuid_to_binary(user_id)
+    user_id = ensure_uuid(user_id)  # Convert to string UUID
+    
     try:
         # Get total count for pagination info
-        total_chats = await mongodb_client.db["chats"].count_documents({"user_id": user_id_binary})
+        total_chats = await mongodb_client.db["chats"].count_documents({"user_id": user_id})
         
         # Fetch paginated chats for this user
-        chats = await mongodb_client.db["chats"].find({"user_id": user_id_binary}) \
+        chats = await mongodb_client.db["chats"].find({"user_id": user_id}) \
             .sort("created_at", -1) \
             .skip(offset) \
             .limit(limit) \
             .to_list(length=limit)
         
+        # Serialize the response
+        serialized_chats = serialize_doc(chats)
+        
         return JSONResponse(
             content={
-                "chats": serialize_doc(chats),
+                "chats": serialized_chats,
                 "total": total_chats,
                 "has_more": (offset + len(chats)) < total_chats
             },
@@ -79,17 +83,19 @@ async def get_chats(
 @router.get("/{chat_id}", dependencies=[Depends(verify_access_token), Depends(get_session)])
 async def get_chat(chat_id: str, request: Request):
     user_id = request.state.user["user_id"]
+    user_id = ensure_uuid(user_id)  # Convert to string UUID
+    chat_id = ensure_uuid(chat_id)  # Convert to string UUID
+    
     try:
-        # Convert chat_id to Binary for query
-        chat_id_binary = uuid_to_binary(chat_id)
-        user_id_binary = uuid_to_binary(user_id)
         chat = await mongodb_client.db["chats"].find_one({
-            "chat_id": chat_id_binary,
-            "user_id": user_id_binary
+            "chat_id": chat_id,
+            "user_id": user_id
         })
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
+            
         return serialize_doc(chat)
+        
     except ValueError as e:
         raise HTTPException(status_code=400, detail="Invalid chat ID format")
     except Exception as e:
@@ -99,21 +105,21 @@ async def get_chat(chat_id: str, request: Request):
 @router.get("/{chat_id}/messages", dependencies=[Depends(verify_access_token), Depends(get_session)])
 async def get_messages(chat_id: str, request: Request):
     user_id = request.state.user["user_id"]
+    user_id = ensure_uuid(user_id)  # Convert to string UUID
+    chat_id = ensure_uuid(chat_id)  # Convert to string UUID
+    
     try:
-        # Convert chat_id to Binary for queries
-        chat_id_binary = uuid_to_binary(chat_id)
-        user_id_binary = uuid_to_binary(user_id)
-        
         # First verify the chat belongs to the user
         chat = await mongodb_client.db["chats"].find_one({
-            "chat_id": chat_id_binary,
-            "user_id": user_id_binary
+            "chat_id": chat_id,
+            "user_id": user_id
         })
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
             
-        messages = await mongodb_client.db["messages"].find({"chat_id": chat_id_binary}).to_list(length=100)
+        messages = await mongodb_client.db["messages"].find({"chat_id": chat_id}).to_list(length=100)
         return serialize_doc(messages)
+        
     except ValueError as e:
         raise HTTPException(status_code=400, detail="Invalid chat ID format")
     except Exception as e:

@@ -15,19 +15,9 @@ class MongoDBClient:
     async def connect(self):
         logger.info(f"Connecting to MongoDB at {settings.MONGODB_URI}...")
         
-        # Create client with UUID representation specified
-        self.client = AsyncIOMotorClient(
-            settings.MONGODB_URI,
-            uuidRepresentation='standard'
-        )
-        
-        # Get database with proper codec options
-        db = self.client[settings.MONGODB_DB_NAME]
-        self.db = db.with_options(
-            codec_options=CodecOptions(
-                uuid_representation=UuidRepresentation.STANDARD
-            )
-        )
+        # Create regular client without UUID representation
+        self.client = AsyncIOMotorClient(settings.MONGODB_URI)
+        self.db = self.client[settings.MONGODB_DB_NAME]
         
         logger.info("MongoDB connection established.")
 
@@ -41,13 +31,7 @@ class MongoDBClient:
             self.client.close()
 
     async def get_collection(self, name: str):
-        # Ensure collections also have the proper codec options
-        collection = self.db[name]
-        return collection.with_options(
-            codec_options=CodecOptions(
-                uuid_representation=UuidRepresentation.STANDARD
-            )
-        )
+        return self.db[name]
 
     async def create_collections(self):
         try:

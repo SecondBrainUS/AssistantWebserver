@@ -175,30 +175,37 @@ class Room:
                 if not output:
                     logger.error(f"No output found in response {response}")
                     return
-                response_message = None
+                output_item = None
                 if len(output) > 1:
                     logger.warning(f"[OPENAI EVENT] [RESPONSE.DONE] Multiple outputs found in response {response}")
-                    response_message = output[0]
+                    output_item = output[0]
                 elif len(output) == 1:
-                    response_message = output[0]
+                    output_item = output[0]
                 else:
                     logger.error(f"[OPENAI EVENT] [RESPONSE.DONE] No output found in response {response}")
                     return
                 #   type": "function_call",
-                if response_message.get('type') == "message":
-                    response_message_content_list = response_message.get('content')
-                    if not response_message_content_list:
-                        logger.error(f"[OPENAI EVENT] [RESPONSE.DONE] No content found in response message {response_message}")
+                if output_item.get('type') == "message":
+                    output_item_content_list = output_item.get('content')
+                    if not output_item_content_list:
+                        logger.error(f"[OPENAI EVENT] [RESPONSE.DONE] No content found in response message {output_item}")
                         return
-                    if len(response_message_content_list) > 1:
-                        logger.warning(f"[OPENAI EVENT] [RESPONSE.DONE] Multiple content found in response content {response_message_content_list}")
-                    response_message_content = response_message_content_list[0]
-                    response_message_type = response_message.get('type')
-                    response_message_text = response_message_content.get('text')
+                    if len(output_item_content_list) > 1:
+                        logger.warning(f"[OPENAI EVENT] [RESPONSE.DONE] Multiple content found in response content {output_item_content_list}")
+                    content_item = output_item_content_list[0]
+                    content_item_type = content_item.get('type')
+                    content_item_text = None
+                    if content_item_type == "text":
+                        content_item_text = content_item.get('text')
+                    elif content_item_type == "audio":
+                        content_item_text = content_item.get('transcript')
+                    else:
+                        logger.warning(f"[OPENAI EVENT] [RESPONSE.DONE] Invalid response message type {content_item_type}")
+                        return
 
                     messageid = str(uuid.uuid4())
                     created_timestamp = datetime.now()
-                    role = response_message.get('role')
+                    role = output_item.get('role')
                     model = "OpenAI Real Time GPT-4o"
                     usage = event.get('usage')
                     save_message_result = await save_message({ 
@@ -207,17 +214,17 @@ class Room:
                         "model": model,
                         "created_timestamp": created_timestamp,
                         "role": role,
-                        "content": response_message_text,
-                        "modality": response_message_type,
+                        "content": content_item_text,
+                        "modality": content_item_type,
                         "type": "message",
                         "usage": usage,
                     })
-                if response_message.get('type') == "function_call":
+                if output_item.get('type') == "function_call":
                     messageid = str(uuid.uuid4())
                     created_timestamp = datetime.now()
                     role = "system"
                     model = "OpenAI Real Time GPT-4o"
-                    usage = event.get('usage')
+                    usage = response.get('usage')
                     save_message_result = await save_message({ 
                         "message_id": messageid,
                         "chat_id": self.chat_id,
@@ -226,9 +233,9 @@ class Room:
                         "role": role,
                         "type": "function_call",
                         "usage": usage,
-                        "name": response_message.get('name'),
-                        "arguments": response_message.get('arguments'),
-                        "callid": response_message.get('callid'),
+                        "name": output_item.get('name'),
+                        "arguments": output_item.get('arguments'),
+                        "callid": output_item.get('callid'),
                     })
                     return
 
