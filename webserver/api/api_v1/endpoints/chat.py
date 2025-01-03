@@ -48,12 +48,13 @@ async def get_chats(
     """
 
     user_id = request.state.user["user_id"]
+    user_id_binary = uuid_to_binary(user_id)
     try:
         # Get total count for pagination info
-        total_chats = await mongodb_client.db["chats"].count_documents({"user_id": user_id})
+        total_chats = await mongodb_client.db["chats"].count_documents({"user_id": user_id_binary})
         
         # Fetch paginated chats for this user
-        chats = await mongodb_client.db["chats"].find({"user_id": user_id}) \
+        chats = await mongodb_client.db["chats"].find({"user_id": user_id_binary}) \
             .sort("created_at", -1) \
             .skip(offset) \
             .limit(limit) \
@@ -81,9 +82,10 @@ async def get_chat(chat_id: str, request: Request):
     try:
         # Convert chat_id to Binary for query
         chat_id_binary = uuid_to_binary(chat_id)
+        user_id_binary = uuid_to_binary(user_id)
         chat = await mongodb_client.db["chats"].find_one({
             "chat_id": chat_id_binary,
-            "user_id": user_id
+            "user_id": user_id_binary
         })
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
@@ -100,11 +102,12 @@ async def get_messages(chat_id: str, request: Request):
     try:
         # Convert chat_id to Binary for queries
         chat_id_binary = uuid_to_binary(chat_id)
+        user_id_binary = uuid_to_binary(user_id)
         
         # First verify the chat belongs to the user
         chat = await mongodb_client.db["chats"].find_one({
             "chat_id": chat_id_binary,
-            "user_id": user_id
+            "user_id": user_id_binary
         })
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")

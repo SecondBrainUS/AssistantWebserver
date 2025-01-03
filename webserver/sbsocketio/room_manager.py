@@ -94,8 +94,9 @@ class Room:
         """Initialize the OpenAI API connection and set up event handlers"""
         try:
             # Register generic callback for all events
-            self.api.set_message_callback(self._handle_openai_event)
+            # self.api.set_message_callback(self._handle_openai_event)
             self.api.register_event_callback("error", self._handle_openai_error)
+            self.api.register_event_callback("response.done", self._handle_openai_event)
 
             # Get tool function map
             tool_map = self.assistant_functions.get_tool_function_map()
@@ -148,22 +149,22 @@ class Room:
         """Set the callback for sending error messages to the original sender."""
         self._message_error_callback = callback
 
-    async def _handle_openai_event(self, message: str) -> None:
+    async def _handle_openai_event(self, event: dict) -> None:
         """Handle all messages from OpenAI and broadcast to room."""
+        logger.info(f"[BITCH] Received OpenAI event in room {self.room_id}: {event}")
         try:
-            # Parse the raw message
-            event = json.loads(message)
             event_type = event.get("type")
 
             logger.debug(f"Received OpenAI event in room {self.room_id}: {event_type}")
 
-            # Broadcast the event to room members
-            if self._message_callback:
-                await self._message_callback(
-                    {"event_type": event_type, "data": event, "room_id": self.room_id}
-                )
-            else:
-                logger.warning(f"No message callback set for room {self.room_id}")
+
+            # # Broadcast the event to room members
+            # if self._message_callback:
+            #     await self._message_callback(
+            #         {"event_type": event_type, "data": event, "room_id": self.room_id}
+            #     )
+            # else:
+            #     logger.warning(f"No message callback set for room {self.room_id}")
 
             if event_type == "response.done":
                 response = event.get('response')
@@ -185,12 +186,15 @@ class Room:
                     return
                 #   type": "function_call",
                 if response_message.get('type') == "message":
-                    response_message_content = response_message.get('content')
-                    if not response_message_content:
+                    response_message_content_list = response_message.get('content')
+                    if not response_message_content_list:
                         logger.error(f"[OPENAI EVENT] [RESPONSE.DONE] No content found in response message {response_message}")
                         return
-                    response_message_text = response_message_content.get('text')
+                    if len(response_message_content_list) > 1:
+                        logger.warning(f"[OPENAI EVENT] [RESPONSE.DONE] Multiple content found in response content {response_message_content_list}")
+                    response_message_content = response_message_content_list[0]
                     response_message_type = response_message.get('type')
+                    response_message_text = response_message_content.get('text')
 
                     messageid = str(uuid.uuid4())
                     created_timestamp = datetime.now()

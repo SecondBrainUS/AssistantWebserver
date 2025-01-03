@@ -1,5 +1,12 @@
+On send_message, in the assistant namespace we override the message callback so it responds to the room when OpenAI responds.
+
+
+
 cd C:\Users\alexa\Desktop\Development\SecondBrain\AssistantWebserver
 poetry run uvicorn webserver.main:app --reload
+
+cd C:\Users\alexa\Desktop\Development\SecondBrain\AssistantWebClient\assistant-web-client
+npm run dev
 
 
 docker run --name assistantdb -e POSTGRES_PASSWORD=password -d -p 5432:5432 postgres
