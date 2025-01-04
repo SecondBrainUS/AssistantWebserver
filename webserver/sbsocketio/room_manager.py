@@ -90,6 +90,11 @@ class Room:
         self._message_callback = None
         self._message_error_callback = None
 
+    def set_chat_id(self, chat_id: str):
+        """Set the chat ID associated with this room"""
+        self.chat_id = chat_id
+        logger.info(f"Set chat_id {chat_id} for room {self.room_id}")
+
     async def initialize(self):
         """Initialize the OpenAI API connection and set up event handlers"""
         try:
@@ -406,6 +411,7 @@ class Room:
 class RoomManager:
     def __init__(self, api_key: str, endpoint_url: str, connection_manager):
         self.rooms: Dict[str, Room] = {}
+        self.chatid_roomid_map: Dict[str, str] = {}
         self.api_key = api_key
         self.endpoint_url = endpoint_url
         self.connection_manager = connection_manager
@@ -431,10 +437,30 @@ class RoomManager:
         """Get a room by ID"""
         return self.rooms.get(room_id)
 
+    def get_room_id_for_chat(self, chat_id: str) -> Optional[str]:
+        """Get room ID associated with a chat ID"""
+        return self.chatid_roomid_map.get(chat_id)
+
+    def add_chat_room_mapping(self, chat_id: str, room_id: str):
+        """Associate a chat ID with a room ID"""
+        self.chatid_roomid_map[chat_id] = room_id
+        logger.info(f"Added mapping: chat_id {chat_id} -> room_id {room_id}")
+
+    def remove_chat_room_mapping(self, chat_id: str):
+        """Remove chat ID to room ID mapping"""
+        if chat_id in self.chatid_roomid_map:
+            room_id = self.chatid_roomid_map.pop(chat_id)
+            logger.info(f"Removed mapping: chat_id {chat_id} -> room_id {room_id}")
+
     async def remove_room(self, room_id: str):
         """Remove a room and cleanup its resources"""
         room = self.rooms.pop(room_id, None)
         if room:
+            # Remove any chat mappings for this room
+            chat_ids = [chat_id for chat_id, rid in self.chatid_roomid_map.items() if rid == room_id]
+            for chat_id in chat_ids:
+                self.remove_chat_room_mapping(chat_id)
+            
             await room.cleanup()
             logger.info(f"Room {room_id} removed")
 
