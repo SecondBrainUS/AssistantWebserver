@@ -64,6 +64,7 @@ class Room:
         connection_manager: ConnectionManager,
         auto_execute_functions: bool = False,
     ):
+        """ """
         self.room_id = room_id
         self.api = OpenAIRealTimeAPI(api_key, endpoint_url)
         self.api.set_auto_execute_functions(auto_execute_functions)
@@ -71,6 +72,9 @@ class Room:
         self.message_count = 0
         self.connection_manager = connection_manager
         self.chat_id: Optional[str] = None
+
+        self._aiapi_connection_attempt = 0
+        self.MAX_CONNECTION_ATTEMPTS = 5
 
         # Initialize AssistantFunctions
         self.assistant_functions = AssistantFunctions(
@@ -95,11 +99,42 @@ class Room:
         self.chat_id = chat_id
         logger.info(f"Set chat_id {chat_id} for room {self.room_id}")
 
+    async def initialize_openai_socket(self):
+        tool_map = self.assistant_functions.get_tool_function_map()
+
+        await self.api.connect()
+
+        # Format tools for session update
+        tools = []
+        for name, meta in tool_map.items():
+            logger.info(f"Tool name: {name}, meta: {meta}")
+            tool = {
+                "type": "function",
+                "name": name,
+                "description": meta["description"],
+                "parameters": meta["parameters"],
+            }
+            tools.append(tool)
+
+        # Set up the initial session with tools enabled
+        await self.api.send_event(
+            "session.update",
+            {
+                "session": {
+                    "modalities": ["text", "audio"],
+                    "instructions": "You are a helpful assistant. Please answer clearly and concisely.",
+                    "temperature": 0.8,
+                    "tools": tools,
+                    "turn_detection": None,
+                    "input_audio_transcription": {"model": "whisper-1"},
+                }
+            },
+        )
+
     async def initialize(self):
         """Initialize the OpenAI API connection and set up event handlers"""
         try:
             # Register generic callback for all events
-            # self.api.set_message_callback(self._handle_openai_event)
             self.api.register_event_callback("error", self._handle_openai_error)
             self.api.register_event_callback("response.done", self._handle_openai_event)
 
@@ -110,35 +145,8 @@ class Room:
             self.api.set_tool_function_map(tool_map)
 
             # Connect to OpenAI
-            await self.api.connect()
-
-            # Format tools for session update
-            tools = []
-            for name, meta in tool_map.items():
-                logger.info(f"Tool name: {name}, meta: {meta}")
-                tool = {
-                    "type": "function",
-                    "name": name,
-                    "description": meta["description"],
-                    "parameters": meta["parameters"],
-                }
-                tools.append(tool)
-
-            # Set up the initial session with tools enabled
-            await self.api.send_event(
-                "session.update",
-                {
-                    "session": {
-                        "modalities": ["text", "audio"],
-                        "instructions": "You are a helpful assistant. Please answer clearly and concisely.",
-                        "temperature": 0.8,
-                        "tools": tools,
-                        "turn_detection": None,
-                        "input_audio_transcription": {"model": "whisper-1"},
-                    }
-                },
-            )
-
+            await self.initialize_openai_socket()
+            
             logger.info(f"Room {self.room_id} initialized successfully")
             return True
 
@@ -161,15 +169,6 @@ class Room:
             event_type = event.get("type")
 
             logger.debug(f"Received OpenAI event in room {self.room_id}: {event_type}")
-
-
-            # # Broadcast the event to room members
-            # if self._message_callback:
-            #     await self._message_callback(
-            #         {"event_type": event_type, "data": event, "room_id": self.room_id}
-            #     )
-            # else:
-            #     logger.warning(f"No message callback set for room {self.room_id}")
 
             if event_type == "response.done":
                 response = event.get('response')
@@ -303,7 +302,15 @@ class Room:
 
     async def send_message(self, message: dict, sid: str, model: str) -> None:
         """Send a message to the OpenAI API."""
-        try:
+        try:       
+            if not self.api.is_connected():
+                if self._aiapi_connection_attempt > self.MAX_CONNECTION_ATTEMPTS:
+                    logger.error("[SEND MESSAGE] [OPENAI WEBSOCKET] Max connection attempts reached")
+                    return
+
+                logger.warning(f"[SEND MESSAGE] [OPENAI WEBSOCKET] OpenAI API is not connected, attempting to reconnect #{self._aiapi_connection_attempt} {self.room_id}")
+                await self.initialize_openai_socket()
+
             # Get user data from connection manager if needed
             logger.info(f"[SEND MESSAGE] Getting user data for socket {sid}")
             userid = self.connection_manager.get_user_id(sid)
@@ -392,6 +399,7 @@ class Room:
             await self.api.send_event(
                 event_type=message["type"], data=message.get("data", {})
             )
+            
         except Exception as e:
             logger.error(
                 f"Error sending message in room {self.room_id}: {e}", exc_info=True

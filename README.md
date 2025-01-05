@@ -1,3 +1,21 @@
+Goal:
+    Multiple users, multiple sessions connected to a single AI agent
+    Realtime/Websocket or RESTful/HTTP 
+
+    AI APIs:
+        OpenAI Realtime
+        Ollama (next)
+
+
+    The Room needs to be able to emit a message to all connected users
+        _broadcast()
+            {room_id}
+
+
+
+
+
+
 On send_message, in the assistant namespace we override the message callback so it responds to the room when OpenAI responds.
 
 
