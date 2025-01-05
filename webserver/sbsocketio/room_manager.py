@@ -257,18 +257,27 @@ class Room:
     ) -> None:
         """Handle errors from OpenAI."""
         logger.error(f"OpenAI error in room {self.room_id}: {error}")
-        if event:
-            logger.debug(f"Error event details: {event}")
-
-        # Broadcast error to room members if callback is set
-        if self._message_callback:
-            await self._message_callback(
-                {
+        
+        # Check if error is a dict containing session expiration info
+        if isinstance(error, dict) and error.get('error', {}).get('code') == 'session_expired':
+            logger.info(f"Session expired for room {self.room_id}, cleaning up")
+            await self.cleanup()
+            # Signal room manager to remove this room
+            if self._message_callback:
+                await self._message_callback({
                     "event_type": "error",
-                    "data": {"error": error, "event": event},
-                    "room_id": self.room_id,
-                }
-            )
+                    "data": {"error": "Chat session has expired"},
+                    "room_id": self.room_id
+                })
+            return
+
+        # Handle other errors as before
+        if self._message_callback:
+            await self._message_callback({
+                "event_type": "error",
+                "data": {"error": error, "event": event},
+                "room_id": self.room_id
+            })
 
     async def _handle_message_error(
         self,
