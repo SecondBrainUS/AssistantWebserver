@@ -288,7 +288,7 @@ class AssistantRealtimeNamespace(BaseNamespace):
                             {
                                 "item": {
                                     "id": msg["message_id"][:30],
-                                    "call_id": msg.get("callid") if msg.get("callid") else str(tool_count),
+                                    "call_id": msg.get("call_id") if msg.get("call_id") else str(tool_count),
                                     "type": "function_call",
                                     "name": msg.get("name"),
                                     "arguments": msg.get("arguments")
