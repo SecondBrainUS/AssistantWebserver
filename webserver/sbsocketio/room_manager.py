@@ -166,9 +166,29 @@ class Room:
         """Set the callback for sending error messages to the original sender."""
         self._message_error_callback = callback
 
+    async def _handle_tool_call_callback(self, tool_call: dict, result: dict) -> None:
+        """Handle tool call callback"""
+        logger.info(f"[TOOL CALL] Received tool call callback in room {self.room_id}: {tool_call.get('call_id')} {result}")
+        messageid = str(uuid.uuid4())
+        function_call = tool_call.get('function')
+        save_message_result = await save_message({ 
+            "message_id": messageid,
+            "chat_id": self.chat_id,
+            "created_timestamp": datetime.now(),
+            "role": "system",
+            "type": "function_result",
+            "name": function_call.get('name'),
+            "arguments": function_call.get('arguments'),
+            "call_id": tool_call.get('call_id'),
+            "result": result,
+        })
+
+        # TODO: issue, need to send the message to the room
+        return
+
     async def _handle_openai_event(self, event: dict) -> None:
         """Handle all messages from OpenAI and broadcast to room."""
-        logger.info(f"[BITCH] Received OpenAI event in room {self.room_id}: {event}")
+        logger.info(f"[OPENAI EVENT] Received OpenAI event in room {self.room_id}: {event}")
         try:
             event_type = event.get("type")
 
