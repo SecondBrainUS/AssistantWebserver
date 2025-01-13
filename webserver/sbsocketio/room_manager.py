@@ -243,7 +243,7 @@ class Room:
                         "usage": usage,
                         "name": output_item.get('name'),
                         "arguments": output_item.get('arguments'),
-                        "callid": output_item.get('callid'),
+                        "call_id": output_item.get('call_id'),
                     })
                     return
 
