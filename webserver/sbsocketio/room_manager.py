@@ -6,6 +6,7 @@ from typing import Dict, Optional
 from datetime import datetime
 from assistant_realtime_openai import OpenAIRealTimeAPI
 from assistant_functions import AssistantFunctions
+import socketio
 from webserver.config import settings
 from webserver.db.chatdb.db import mongodb_client
 from webserver.sbsocketio.connection_manager import ConnectionManager
@@ -63,6 +64,7 @@ class Room:
         endpoint_url: str,
         connection_manager: ConnectionManager,
         auto_execute_functions: bool = False,
+        sio: socketio.AsyncServer = None,
     ):
         """ """
         self.room_id = room_id
@@ -93,6 +95,8 @@ class Room:
         # Store message callback for broadcasting
         self._message_callback = None
         self._message_error_callback = None
+
+        self.sio = sio  # Add Socket.IO instance
 
     def set_chat_id(self, chat_id: str):
         """Set the chat ID associated with this room"""
@@ -424,9 +428,19 @@ class Room:
         except Exception as e:
             logger.error(f"Error cleaning up room {self.room_id}: {e}")
 
+    async def broadcast(self, event_type: str, data: dict) -> None:
+        """Broadcast a message to all users in the room"""
+        await self.sio.emit(
+            event_type,
+            data,
+            room=self.room_id,
+            namespace='/assistant'  # adjust namespace as needed
+        )
+
 
 class RoomManager:
-    def __init__(self, api_key: str, endpoint_url: str, connection_manager):
+    def __init__(self, api_key: str, endpoint_url: str, connection_manager, sio: socketio.AsyncServer):
+        self.sio: socketio.AsyncServer = sio
         self.rooms: Dict[str, Room] = {}
         self.chatid_roomid_map: Dict[str, str] = {}
         self.api_key = api_key
@@ -439,7 +453,13 @@ class RoomManager:
             logger.warning(f"Room {room_id} already exists")
             return False
 
-        room = Room(room_id, self.api_key, self.endpoint_url, self.connection_manager)
+        room = Room(
+            room_id, 
+            self.api_key, 
+            self.endpoint_url, 
+            self.connection_manager,
+            sio=self.sio
+        )
         success = await room.initialize()
 
         if success:

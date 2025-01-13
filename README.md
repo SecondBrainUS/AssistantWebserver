@@ -8,9 +8,30 @@ Goal:
 
 
     The Room needs to be able to emit a message to all connected users
-        _broadcast()
-            {room_id}
 
+    Room:
+      room_id
+      socket
+      chat_id?
+      connected_users
+      connection_manager
+
+      # connection stuff:
+        _ai_api_connection_attempts
+        MAX_CONNECTION_ATTEMPTS
+
+      _broadcast()
+          {
+            room_id
+          }
+          sio.emit('room_joined', 
+                        {data}, 
+                        room=sid, 
+                        namespace=self.namespace
+                    )
+
+      _on_first_message()
+        create chat_id
 
 
 
