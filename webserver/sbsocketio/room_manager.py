@@ -15,7 +15,6 @@ from uuid import UUID
 from webserver.db.chatdb.uuid_utils import uuid_to_binary, ensure_uuid
 logger = logging.getLogger(__name__)
 
-
 async def save_message(message: dict):
     """Save a message to the database"""
     message_id = message["message_id"]
@@ -56,25 +55,36 @@ async def save_chat(chat: dict):
         return {"error": str(e)}
 
 
-class Room:
+class AssistantRoom:
     def __init__(
         self,
         room_id: str,
+        namespace: str,
+        model: str,
         api_key: str,
         endpoint_url: str,
         connection_manager: ConnectionManager,
         auto_execute_functions: bool = False,
         sio: socketio.AsyncServer = None,
+        chat_id: Optional[str] = None,
     ):
         """ """
         self.room_id = room_id
-        self.api = OpenAIRealTimeAPI(api_key, endpoint_url)
+
+        # Create model instance
+        if model == "OpenAI Real Time GPT-4o":
+            self.api = OpenAIRealTimeAPI(api_key, endpoint_url)
+        else:
+            raise ValueError(f"Unsupported model: {model}")
         self.api.set_auto_execute_functions(auto_execute_functions)
-        self.api.set_tool_call_callback(self._handle_tool_call_callback)
+        self.api.set_tool_call_callback(self._handle_function_result)
+        
         self.connected_users: set[str] = set()
         self.message_count = 0
         self.connection_manager = connection_manager
-        self.chat_id: Optional[str] = None
+        
+        if chat_id:
+            self.chat_id = chat_id
 
         self._aiapi_connection_attempt = 0
         self.MAX_CONNECTION_ATTEMPTS = 5
@@ -136,12 +146,57 @@ class Room:
             },
         )
 
+    async def initialize_chat(self):
+        if not self.chat_id:
+            return
+
+        # Load last 10 messages into conversation context
+        messages_collection = mongodb_client.db["messages"]
+        messages = await messages_collection.find(
+            {"chat_id": self.chat_id}
+        ).sort("created_timestamp", -1).limit(10).to_list(10)
+        
+        if self.model == "OpenAI Real Time GPT-4o":
+            # Add messages to conversation context in chronological order
+            messages.reverse()
+            for msg in messages:
+                if msg.get("type") == "message":
+                    await self.api.send_event(
+                        "conversation.item.create",
+                        {
+                            "item": {
+                                "id": msg.get("message_id")[:30],
+                                "type": "message",
+                                "role": msg.get("role"),
+                                "content": [{
+                                    "type": "input_text" if msg.get("role") == "user" else "text",
+                                    "text": msg.get("content")
+                                }],
+                            }
+                        }
+                    )
+                elif msg.get("type") == "function_call":
+                    await self.api.send_event(
+                        "conversation.item.create",
+                        {
+                            "item": {
+                                "id": msg.get("message_id")[:30],
+                                    "call_id": msg.get("call_id"),
+                                    "type": "function_call",
+                                    "name": msg.get("name"),
+                                    "arguments": msg.get("arguments")
+                                }
+                            }
+                        )
+        else:
+            raise ValueError(f"Unsupported model: {self.model}")
+
     async def initialize(self):
         """Initialize the OpenAI API connection and set up event handlers"""
         try:
             # Register generic callback for all events
             self.api.register_event_callback("error", self._handle_openai_error)
-            self.api.register_event_callback("response.done", self._handle_openai_event)
+            self.api.register_event_callback("response.done", self._handle_openai_response_done)
 
             # Get tool function map
             tool_map = self.assistant_functions.get_tool_function_map()
@@ -151,6 +206,9 @@ class Room:
 
             # Connect to OpenAI
             await self.initialize_openai_socket()
+
+            # Initialize chat
+            await self.initialize_chat()
             
             logger.info(f"Room {self.room_id} initialized successfully")
             return True
@@ -167,7 +225,7 @@ class Room:
         """Set the callback for sending error messages to the original sender."""
         self._message_error_callback = callback
 
-    async def _handle_tool_call_callback(self, tool_call: dict, result: dict) -> None:
+    async def _handle_function_result(self, tool_call: dict, result: dict) -> None:
         """Handle tool call callback"""
         logger.info(f"[TOOL CALL] Received tool call callback in room {self.room_id}: {tool_call.get('call_id')} {result}")
         messageid = str(uuid.uuid4())
@@ -187,7 +245,7 @@ class Room:
         # TODO: issue, need to send the message to the room
         return
 
-    async def _handle_openai_event(self, event: dict) -> None:
+    async def _handle_openai_response_done(self, event: dict) -> None:
         """Handle all messages from OpenAI and broadcast to room."""
         logger.info(f"[OPENAI EVENT] Received OpenAI event in room {self.room_id}: {event}")
         try:
@@ -459,39 +517,44 @@ class Room:
         )
 
 
-class RoomManager:
+class AssistantRoomManager:
     def __init__(self, api_key: str, endpoint_url: str, connection_manager, sio: socketio.AsyncServer):
         self.sio: socketio.AsyncServer = sio
-        self.rooms: Dict[str, Room] = {}
+        self.rooms: Dict[str, AssistantRoom] = {}
         self.chatid_roomid_map: Dict[str, str] = {}
         self.api_key = api_key
         self.endpoint_url = endpoint_url
         self.connection_manager = connection_manager
 
-    async def create_room(self, room_id: str) -> bool:
+    async def create_room(self, room_id: str, namespace: str, model: str, chat_id: str = None) -> bool:
         """Create a new room with OpenAI API instance"""
         if room_id in self.rooms:
             logger.warning(f"Room {room_id} already exists")
             return False
 
-        room = Room(
+        room = AssistantRoom(
             room_id, 
+            namespace,
+            model,
             self.api_key, 
             self.endpoint_url, 
             self.connection_manager,
-            sio=self.sio
+            sio=self.sio,
+            chat_id=chat_id
         )
         success = await room.initialize()
 
         if success:
             self.rooms[room_id] = room
+            if chat_id:
+                self.chatid_roomid_map[chat_id] = room_id
             logger.info(f"Room {room_id} created successfully")
             return True
         else:
             logger.error(f"Failed to create room {room_id}")
             return False
 
-    def get_room(self, room_id: str) -> Optional[Room]:
+    def get_room(self, room_id: str) -> Optional[AssistantRoom]:
         """Get a room by ID"""
         return self.rooms.get(room_id)
 

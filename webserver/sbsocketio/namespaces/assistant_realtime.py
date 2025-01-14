@@ -1,10 +1,11 @@
 import logging
 import traceback
+import uuid
 from typing import Optional
 from http.cookies import SimpleCookie
 from webserver.config import settings
 from .base import BaseNamespace
-from ..room_manager import RoomManager
+from ..room_manager import AssistantRoomManager
 from jose import jwt
 import json
 from datetime import datetime
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 class AssistantRealtimeNamespace(BaseNamespace):
     def __init__(self, sio, connection_manager):
         super().__init__(sio, connection_manager)
-        self.room_manager = RoomManager(
+        self.room_manager = AssistantRoomManager(
             api_key=settings.OPENAI_API_KEY,
             endpoint_url=settings.OPENAI_REALTIME_ENDPOINT_URL,
             connection_manager=self.connection_manager,
@@ -139,16 +140,16 @@ class AssistantRealtimeNamespace(BaseNamespace):
 
         @self.sio.on('create_room', namespace=self.namespace)
         async def create_assistant_room(sid: str, data: dict):
-            room_id = data.get('room_id')
-            if not room_id:
-                logger.warning(f"Invalid room creation attempt from SID {sid}: missing room_id")
-                return
+            chat_id = data.get('chat_id')
+            model = data.get('model')
+            room_uuid = str(uuid.uuid4())
+            room_id = f"room_{room_uuid}"
 
-            success = await self.room_manager.create_room(room_id)
+            success = await self.room_manager.create_room(room_id, self.namespace, chat_id, model)
             if success:
                 logger.info(f"Created assistant room: {room_id}")
                 await self.sio.emit('room_created', 
-                    {'room_id': room_id}, 
+                    {'room_id': room_id, 'chat_id': chat_id, 'model': model}, 
                     room=sid, 
                     namespace=self.namespace
                 )
@@ -210,107 +211,20 @@ class AssistantRealtimeNamespace(BaseNamespace):
 
         @self.sio.on('find_chat', namespace=self.namespace)
         async def find_chat(sid: str, data: dict):
+            logger.info(f"[FIND CHAT] Received find_chat request from SID {sid}: {data}")
             chat_id = data.get('chat_id')
             if not chat_id:
                 logger.warning(f"Invalid find_chat attempt from SID {sid}: missing chat_id")
                 return
 
-            # Check if chat has an existing room
             room_id = self.room_manager.get_room_id_for_chat(chat_id)
-            logger.info(f"[FIND CHAT] Room ID for chat {chat_id}: {room_id}")
-            
-            if room_id:
-                # Room exists, join it
-                logger.info(f"[FIND CHAT] Room exists, joining room {room_id}")
-                room = self.room_manager.get_room(room_id)
-                if room:
-                    await self.sio.enter_room(sid, room_id, namespace=self.namespace)
-                    room.add_user(sid)
-                    logger.info(f"[FIND CHAT] SID {sid} joined existing room {room_id} for chat {chat_id}")
-                    await self.sio.emit('room_joined', 
-                        {'room_id': room_id, 'chat_id': chat_id}, 
-                        room=sid, 
-                        namespace=self.namespace
-                    )
-                    return
-            
-            # No existing room, create new one
-            room_id = f"room_{chat_id}"
-            logger.info(f"[FIND CHAT] No existing room, creating new room {room_id}")
-            success = await self.room_manager.create_room(room_id)
-            
-            if success:
-                room = self.room_manager.get_room(room_id)
-                logger.info(f"[FIND CHAT] Room created, setting up message handler")
-                # Set up message handling for the new room
-                self._setup_room_message_handler(room)
-                
-                # Set up message error handling for the new room
-                room.set_message_error_callback(lambda error_data: self._send_message_error(sid, error_data))
-                
-                # Associate chat_id with room_id
-                self.room_manager.add_chat_room_mapping(chat_id, room_id)
-                room.set_chat_id(chat_id)
-                
-                # Join the room
-                await self.sio.enter_room(sid, room_id, namespace=self.namespace)
-                room.add_user(sid)
-                
-                # Load last 10 messages into conversation context
-                messages_collection = mongodb_client.db["messages"]
-                messages = await messages_collection.find(
-                    {"chat_id": chat_id}
-                ).sort("created_timestamp", -1).limit(10).to_list(10)
-                
-                # Add messages to conversation context in chronological order
-                messages.reverse()
-                tool_count = 0
-                for msg in messages:
-                    print(msg)
-                    if msg.get("type") == "message":
-                        await room.api.send_event(
-                            "conversation.item.create",
-                            {
-                                "item": {
-                                    "id": msg["message_id"][:30],
-                                    "type": "message",
-                                    "role": msg["role"],
-                                    "content": [{
-                                        "type": "input_text" if msg["role"] == "user" else "text",
-                                        "text": msg["content"]
-                                    }],
-                                }
-                            }
-                        )
-                    elif msg.get("type") == "function_call":
-                        # Reconstruct function call as conversation item
-                        tool_count += 1
-                        await room.api.send_event(
-                            "conversation.item.create",
-                            {
-                                "item": {
-                                    "id": msg["message_id"][:30],
-                                    "call_id": msg.get("call_id") if msg.get("call_id") else str(tool_count),
-                                    "type": "function_call",
-                                    "name": msg.get("name"),
-                                    "arguments": msg.get("arguments")
-                                }
-                            }
-                        )
-                
-                logger.info(f"SID {sid} joined new room {room_id} for chat {chat_id}")
-                await self.sio.emit('room_joined', 
-                    {'room_id': room_id, 'chat_id': chat_id}, 
-                    room=sid, 
-                    namespace=self.namespace
-                )
-            else:
-                logger.error(f"Failed to create room for chat {chat_id}")
-                await self.sio.emit('room_error', 
-                    {'error': 'Failed to create room'}, 
-                    room=sid, 
-                    namespace=self.namespace
-                )
+            if not room_id:
+                logger.info(f"[FIND CHAT] Room not found for chat {chat_id}")
+                await self.sio.emit(f'room_not_found {chat_id}', {'room_id': room_id, 'chat_id': chat_id}, room=sid, namespace=self.namespace)
+                return
+
+            logger.info(f"[FIND CHAT] Room found for chat {chat_id}: {room_id}")
+            await self.sio.emit(f'room_found {chat_id}', {'room_id': room_id, 'chat_id': chat_id}, room=sid, namespace=self.namespace)
 
         @self.sio.on('send_message', namespace=self.namespace)
         async def send_assistant_message(sid: str, data: dict):
@@ -399,44 +313,6 @@ class AssistantRealtimeNamespace(BaseNamespace):
     def _setup_room_message_handler(self, room) -> None:
         """Set up message handling for a room."""
         room.set_message_callback(self._broadcast_room_message)
-
-    async def create_assistant_room(self, sid: str, data: dict):
-        """Create a new assistant room."""
-        room_id = data.get('room_id')
-        if not room_id:
-            logger.warning(f"Invalid room creation attempt from SID {sid}: missing room_id")
-            return
-
-        try:
-            success = await self.room_manager.create_room(room_id)
-            if success:
-                # Set up message handling for the new room
-                room = self.room_manager.get_room(room_id)
-                self._setup_room_message_handler(room)
-                
-                # Set up message error handling for the new room
-                room.set_message_error_callback(lambda error_data: self._send_message_error(sid, error_data))
-                
-                logger.info(f"Created assistant room: {room_id}")
-                await self.sio.emit('room_created', 
-                    {'room_id': room_id}, 
-                    room=sid, 
-                    namespace=self.namespace
-                )
-            else:
-                logger.error(f"Failed to create room {room_id}")
-                await self.sio.emit('room_error', 
-                    {'error': 'Failed to create room'}, 
-                    room=sid, 
-                    namespace=self.namespace
-                )
-        except Exception as e:
-            logger.error(f"Error creating room: {e}", exc_info=True)
-            await self.sio.emit('room_error', 
-                {'error': f'Failed to create room: {str(e)}'}, 
-                room=sid, 
-                namespace=self.namespace
-            )
 
     async def _send_message_error(self, sid: str, error_data: dict):
         await self.sio.emit('message_error', error_data, room=sid, namespace=self.namespace)
