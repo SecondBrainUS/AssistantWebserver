@@ -22,10 +22,12 @@ class AssistantRealtimeNamespace(BaseNamespace):
         self.room_manager = RoomManager(
             api_key=settings.OPENAI_API_KEY,
             endpoint_url=settings.OPENAI_REALTIME_ENDPOINT_URL,
-            connection_manager=self.connection_manager
+            connection_manager=self.connection_manager,
+            sio=self.sio
         )
         self.memcache_client = None
         self.db = None
+        
 
     def get_namespace(self) -> str:
         return '/assistant/realtime'

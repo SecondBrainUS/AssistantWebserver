@@ -70,6 +70,7 @@ class Room:
         self.room_id = room_id
         self.api = OpenAIRealTimeAPI(api_key, endpoint_url)
         self.api.set_auto_execute_functions(auto_execute_functions)
+        self.api.set_tool_call_callback(self._handle_tool_call_callback)
         self.connected_users: set[str] = set()
         self.message_count = 0
         self.connection_manager = connection_manager
