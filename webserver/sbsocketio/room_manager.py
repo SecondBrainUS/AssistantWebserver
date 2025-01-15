@@ -70,6 +70,7 @@ class AssistantRoom:
     ):
         """ """
         self.room_id = room_id
+        self.model = model
 
         # Create model instance
         if model == "OpenAI Real Time GPT-4o":

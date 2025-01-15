@@ -145,7 +145,7 @@ class AssistantRealtimeNamespace(BaseNamespace):
             room_uuid = str(uuid.uuid4())
             room_id = f"room_{room_uuid}"
 
-            success = await self.room_manager.create_room(room_id, self.namespace, chat_id, model)
+            success = await self.room_manager.create_room(room_id, self.namespace, model, chat_id)
             if success:
                 logger.info(f"Created assistant room: {room_id}")
                 await self.sio.emit('room_created', 
