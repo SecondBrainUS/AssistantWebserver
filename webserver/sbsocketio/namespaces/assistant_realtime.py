@@ -12,8 +12,6 @@ from datetime import datetime
 from webserver.db.memcache.connection import get_memcache_client
 from webserver.db.assistantdb.connection import get_db
 from webserver.db.assistantdb.model import UserSession, User
-from webserver.db.chatdb.connection import get_chats_collection, get_messages_collection
-from webserver.db.chatdb.db import mongodb_client
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +27,6 @@ class AssistantRealtimeNamespace(BaseNamespace):
         self.memcache_client = None
         self.db = None
         
-
     def get_namespace(self) -> str:
         return '/assistant/realtime'
 
@@ -148,14 +145,14 @@ class AssistantRealtimeNamespace(BaseNamespace):
             success = await self.room_manager.create_room(room_id, self.namespace, model, chat_id)
             if success:
                 logger.info(f"Created assistant room: {room_id}")
-                await self.sio.emit('room_created', 
+                await self.sio.emit(f'room_created {chat_id}', 
                     {'room_id': room_id, 'chat_id': chat_id, 'model': model}, 
                     room=sid, 
                     namespace=self.namespace
                 )
             else:
                 logger.error(f"Failed to create room {room_id}")
-                await self.sio.emit('room_error', 
+                await self.sio.emit(f'room_error {chat_id}', 
                     {'error': 'Failed to create room'}, 
                     room=sid, 
                     namespace=self.namespace
@@ -310,9 +307,3 @@ class AssistantRealtimeNamespace(BaseNamespace):
         except Exception as e:
             logger.error(f"Error broadcasting room message: {e}", exc_info=True)
 
-    def _setup_room_message_handler(self, room) -> None:
-        """Set up message handling for a room."""
-        room.set_message_callback(self._broadcast_room_message)
-
-    async def _send_message_error(self, sid: str, error_data: dict):
-        await self.sio.emit('message_error', error_data, room=sid, namespace=self.namespace)
