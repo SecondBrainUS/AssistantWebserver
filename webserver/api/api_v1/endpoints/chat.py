@@ -1,4 +1,6 @@
 import logging
+import uuid
+from datetime import datetime
 from fastapi import APIRouter, Query, HTTPException, status, Depends, Request
 from fastapi.responses import JSONResponse
 from webserver.config import settings
@@ -163,3 +165,32 @@ async def delete_chat(chat_id: str, request: Request):
     except Exception as e:
         logger.error(f"Error deleting chat {chat_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.post("", dependencies=[Depends(verify_access_token), Depends(get_session)])
+async def create_chat(request: Request):
+    user_id = request.state.user["user_id"]
+    user_id = ensure_uuid(user_id)
+    
+    body = await request.json()
+    model_id = body.get("model_id")
+    if not model_id:
+        raise HTTPException(status_code=400, detail="Model ID is required")
+
+    chat_id = str(uuid.uuid4())
+    chat_id = uuid_to_binary(chat_id)
+    created_timestamp = datetime.now()
+    try:
+        chat = await mongodb_client.db["chats"].insert_one({
+            "chat_id": chat_id,
+            "user_id": user_id,
+            "current_model_id": model_id,
+            "created_timestamp": created_timestamp
+        })
+    except Exception as e:
+        logger.error(f"Error creating chat {chat_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+    return JSONResponse(
+        content={"chat_id": chat_id},
+        status_code=status.HTTP_200_OK
+    )

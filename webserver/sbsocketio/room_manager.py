@@ -60,7 +60,7 @@ class AssistantRoom:
         self,
         room_id: str,
         namespace: str,
-        model: str,
+        model_id: str,
         api_key: str,
         endpoint_url: str,
         connection_manager: ConnectionManager,
@@ -70,13 +70,13 @@ class AssistantRoom:
     ):
         """ """
         self.room_id = room_id
-        self.model = model
+        self.model_id = model_id
 
         # Create model instance
-        if model == "OpenAI GPT-4o Realtime Preview 2024-12-17":
+        if model_id == "gpt-4o-realtime-preview-2024-12-17":
             self.api = OpenAIRealTimeAPI(api_key, endpoint_url)
         else:
-            raise ValueError(f"Unsupported model: {model}")
+            raise ValueError(f"Unsupported model: {model_id}")
         self.api.set_auto_execute_functions(auto_execute_functions)
         self.api.set_tool_call_callback(self._handle_function_result)
         
@@ -157,7 +157,7 @@ class AssistantRoom:
             {"chat_id": self.chat_id}
         ).sort("created_timestamp", -1).limit(10).to_list(10)
         
-        if self.model == "OpenAI GPT-4o Realtime Preview 2024-12-17":
+        if self.model_id == "gpt-4o-realtime-preview-2024-12-17":
             # Add messages to conversation context in chronological order
             messages.reverse()
             for msg in messages:
@@ -190,7 +190,7 @@ class AssistantRoom:
                             }
                         )
         else:
-            raise ValueError(f"Unsupported model: {self.model}")
+            raise ValueError(f"Unsupported model: {self.model_id}")
 
     async def initialize(self):
         """Initialize the OpenAI API connection and set up event handlers"""
@@ -294,12 +294,12 @@ class AssistantRoom:
                     messageid = str(uuid.uuid4())
                     created_timestamp = datetime.now()
                     role = output_item.get('role')
-                    model = "OpenAI GPT-4o Realtime Preview 2024-12-17"
+                    model_id = self.model_id
                     usage = event.get('usage')
                     save_message_result = await save_message({ 
                         "message_id": messageid,
                         "chat_id": self.chat_id,
-                        "model": model,
+                        "model_id": model_id,
                         "created_timestamp": created_timestamp,
                         "role": role,
                         "content": content_item_text,
@@ -311,12 +311,12 @@ class AssistantRoom:
                     messageid = str(uuid.uuid4())
                     created_timestamp = datetime.now()
                     role = "system"
-                    model = "OpenAI GPT-4o Realtime Preview 2024-12-17"
+                    model_id = self.model_id
                     usage = response.get('usage')
                     save_message_result = await save_message({ 
                         "message_id": messageid,
                         "chat_id": self.chat_id,
-                        "model": model,
+                        "model_id": model_id,
                         "created_timestamp": created_timestamp,
                         "role": role,
                         "type": "function_call",
@@ -384,7 +384,7 @@ class AssistantRoom:
                 }
             )
 
-    async def send_message(self, message: dict, sid: str, model: str) -> None:
+    async def send_message(self, message: dict, sid: str, model_id: str) -> None:
         """Send a message to the OpenAI API."""
         try:       
             if not self.api.is_connected():
@@ -469,7 +469,7 @@ class AssistantRoom:
                     "message_id": messageid,
                     "chat_id": self.chat_id,
                     "user_id": userid,
-                    "model": model,
+                    "model_id": model_id,
                     "created_timestamp": created_timestamp,
                     "role": role,
                     "content": chat_message_content,
@@ -527,7 +527,7 @@ class AssistantRoomManager:
         self.endpoint_url = endpoint_url
         self.connection_manager = connection_manager
 
-    async def create_room(self, room_id: str, namespace: str, model: str, chat_id: str) -> bool:
+    async def create_room(self, room_id: str, namespace: str, model_id: str, chat_id: str) -> bool:
         """Create a new room with OpenAI API instance"""
         if room_id in self.rooms:
             logger.warning(f"Room {room_id} already exists")
@@ -536,7 +536,7 @@ class AssistantRoomManager:
         room = AssistantRoom(
             room_id, 
             namespace,
-            model,
+            model_id,
             self.api_key, 
             self.endpoint_url, 
             self.connection_manager,

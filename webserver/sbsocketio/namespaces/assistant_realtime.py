@@ -138,15 +138,19 @@ class AssistantRealtimeNamespace(BaseNamespace):
         @self.sio.on('create_room', namespace=self.namespace)
         async def create_assistant_room(sid: str, data: dict):
             chat_id = data.get('chat_id')
-            model = data.get('model')
+            model_id = data.get('model_id')
             room_uuid = str(uuid.uuid4())
             room_id = f"room_{room_uuid}"
 
-            success = await self.room_manager.create_room(room_id, self.namespace, model, chat_id)
+            print("[HERE] [HERE] [HERE] [HERE] [HERE] [HERE] [HERE] [HERE] [HERE] [HERE]")
+            print("Creating room")
+            print(data)
+
+            success = await self.room_manager.create_room(room_id, self.namespace, model_id, chat_id)
             if success:
                 logger.info(f"Created assistant room: {room_id}")
                 await self.sio.emit(f'room_created {chat_id}', 
-                    {'room_id': room_id, 'chat_id': chat_id, 'model': model}, 
+                    {'room_id': room_id, 'chat_id': chat_id, 'model_id': model_id}, 
                     room=sid, 
                     namespace=self.namespace
                 )
@@ -170,14 +174,14 @@ class AssistantRealtimeNamespace(BaseNamespace):
                 await self.sio.enter_room(sid, room_id, namespace=self.namespace)
                 room.add_user(sid)
                 logger.info(f"SID {sid} joined assistant room {room_id}")
-                await self.sio.emit('room_joined', 
+                await self.sio.emit(f'room_joined {room_id}', 
                     {'room_id': room_id}, 
                     room=sid, 
                     namespace=self.namespace
                 )
             else:
                 logger.warning(f"Attempt to join non-existent room {room_id}")
-                await self.sio.emit('room_error', 
+                await self.sio.emit(f'room_join_error {room_id}', 
                     {'error': 'Room does not exist'}, 
                     room=sid, 
                     namespace=self.namespace
@@ -229,7 +233,7 @@ class AssistantRealtimeNamespace(BaseNamespace):
                 logger.debug(f"[SEND MESSAGE] Starting with data: {data}")
                 room_id = data.get('room_id')
                 message = data.get('message')
-                model = data.get('model')
+                model_id = data.get('model_id')
 
                 
                 if not (room_id and message):
@@ -271,7 +275,7 @@ class AssistantRealtimeNamespace(BaseNamespace):
                     room.api.set_message_callback(handle_openai_response)
                     
                     logger.debug(f"[SEND MESSAGE] Sending message to room")
-                    await room.send_message(message, sid, model)
+                    await room.send_message(message, sid, model_id)
                     
                 except Exception as e:
                     logger.error(f"Error in send_assistant_message: {e}")
