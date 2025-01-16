@@ -527,7 +527,7 @@ class AssistantRoomManager:
         self.endpoint_url = endpoint_url
         self.connection_manager = connection_manager
 
-    async def create_room(self, room_id: str, namespace: str, model: str, chat_id: str = None) -> bool:
+    async def create_room(self, room_id: str, namespace: str, model: str, chat_id: str) -> bool:
         """Create a new room with OpenAI API instance"""
         if room_id in self.rooms:
             logger.warning(f"Room {room_id} already exists")
@@ -547,9 +547,8 @@ class AssistantRoomManager:
 
         if success:
             self.rooms[room_id] = room
-            if chat_id:
-                self.chatid_roomid_map[chat_id] = room_id
-            logger.info(f"Room {room_id} created successfully")
+            self.chatid_roomid_map[chat_id] = room_id
+            logger.info(f"Room {room_id} for chat {chat_id} created successfully")
             return True
         else:
             logger.error(f"Failed to create room {room_id}")
