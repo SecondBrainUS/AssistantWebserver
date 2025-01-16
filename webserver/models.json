@@ -1,0 +1,10 @@
+{
+	"models": [
+		{
+			"model_id": "gpt-4o-realtime-preview-2024-12-17",
+			"name": "GPT-4o Realtime Preview 2024-12-17",
+			"description": "GPT-4o Realtime Preview",
+			"provider": "OpenAI"
+		}
+	]
+}

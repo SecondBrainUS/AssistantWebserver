@@ -157,7 +157,7 @@ class AssistantRealtimeNamespace(BaseNamespace):
                     room=sid, 
                     namespace=self.namespace
                 )
-
+                
         @self.sio.on('join_room', namespace=self.namespace)
         async def join_assistant_room(sid: str, data: dict):
             room_id = data.get('room_id')

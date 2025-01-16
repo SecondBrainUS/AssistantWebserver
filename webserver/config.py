@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str
     OPENAI_REALTIME_ENDPOINT_URL: str
 
+    MODELS_FILEPATH: str
+
     # Assistant Functions Integration Variable sets
     # Notion
     NOTION_API_KEY: str
