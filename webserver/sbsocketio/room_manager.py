@@ -73,7 +73,7 @@ class AssistantRoom:
         self.model = model
 
         # Create model instance
-        if model == "OpenAI Real Time GPT-4o":
+        if model == "OpenAI GPT-4o Realtime Preview 2024-12-17":
             self.api = OpenAIRealTimeAPI(api_key, endpoint_url)
         else:
             raise ValueError(f"Unsupported model: {model}")
@@ -157,7 +157,7 @@ class AssistantRoom:
             {"chat_id": self.chat_id}
         ).sort("created_timestamp", -1).limit(10).to_list(10)
         
-        if self.model == "OpenAI Real Time GPT-4o":
+        if self.model == "OpenAI GPT-4o Realtime Preview 2024-12-17":
             # Add messages to conversation context in chronological order
             messages.reverse()
             for msg in messages:
@@ -294,7 +294,7 @@ class AssistantRoom:
                     messageid = str(uuid.uuid4())
                     created_timestamp = datetime.now()
                     role = output_item.get('role')
-                    model = "OpenAI Real Time GPT-4o"
+                    model = "OpenAI GPT-4o Realtime Preview 2024-12-17"
                     usage = event.get('usage')
                     save_message_result = await save_message({ 
                         "message_id": messageid,
@@ -311,7 +311,7 @@ class AssistantRoom:
                     messageid = str(uuid.uuid4())
                     created_timestamp = datetime.now()
                     role = "system"
-                    model = "OpenAI Real Time GPT-4o"
+                    model = "OpenAI GPT-4o Realtime Preview 2024-12-17"
                     usage = response.get('usage')
                     save_message_result = await save_message({ 
                         "message_id": messageid,

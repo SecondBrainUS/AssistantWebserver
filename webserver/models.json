@@ -2,7 +2,8 @@
 	"models": [
 		{
 			"model_id": "gpt-4o-realtime-preview-2024-12-17",
-			"name": "GPT-4o Realtime Preview 2024-12-17",
+			"display_name": "OpenAI GPT-4o Realtime Preview",
+			"full_name": "OpenAI GPT-4o Realtime Preview 2024-12-17",
 			"description": "GPT-4o Realtime Preview",
 			"provider": "OpenAI"
 		}
