@@ -36,7 +36,6 @@ async def save_message(message: dict):
         )
         return {"error": str(e)}
 
-
 async def save_chat(chat: dict):
     """Save a chat to the database"""
     chat_id = chat["chat_id"]
@@ -53,7 +52,6 @@ async def save_chat(chat: dict):
     except Exception as e:
         logger.error(f"Error saving chat for chat_id {chat_id}: {e}", exc_info=True)
         return {"error": str(e)}
-
 
 class AssistantRoom:
     def __init__(
@@ -237,10 +235,11 @@ class AssistantRoom:
         logger.info(f"[TOOL CALL] Received tool call callback in room {self.room_id}: {tool_call.get('call_id')} {result}")
         messageid = str(uuid.uuid4())
         function_call = tool_call.get('function')
+        timestamp = tool_call.get('timestamp')
         save_message_result = await save_message({ 
             "message_id": messageid,
             "chat_id": self.chat_id,
-            "created_timestamp": datetime.now(),
+            "created_timestamp": timestamp,
             "role": "system",
             "type": "function_result",
             "name": function_call.get('name'),
@@ -248,8 +247,24 @@ class AssistantRoom:
             "call_id": tool_call.get('call_id'),
             "result": result,
         })
+        logger.info(f"[FUNCTION RESULT] Saving function result for message_id {messageid}")
 
-        # TODO: issue, need to send the message to the room
+        function_result_message = {
+            "type": "response.sb.function_result.done",
+            "response": {
+                "message_id": messageid,
+                "chat_id": self.chat_id,
+                "created_timestamp": timestamp,
+                "role": "system",
+                "type": "function_result",
+                "name": function_call.get('name'),
+                "arguments": function_call.get('arguments'),
+                "call_id": tool_call.get('call_id'),
+                "result": result,
+            }
+        }
+
+        await self.broadcast(f"receive_message {self.room_id}", None, function_result_message)
 
         return
 
@@ -591,3 +606,27 @@ class AssistantRoomManager:
             
             await room.cleanup()
             logger.info(f"Room {room_id} removed")
+
+"""
+{'call_id': 'call_7heXQ8uXZMieiHGh', 'function': {'name': 'get_metric_value', 'arguments': '{"location_id":"c9cb27b1-fbb6-45f4-bb17-f837bb3e1a84","metric":"temperature"}'}, 'timestamp': '2025-01-17T16:51:07.357992+00:00'}
+{'value': 69.28902816749999, 'unit': 'F'}
+
+{
+    "_id": "678a85773610daaaef8882dd",
+    "message_id": "f38f26af-bee5-4201-bd4c-0c45d61e38aa",
+    "chat_id": "0f1a3f3a-d3e8-4282-959b-9fc452a1d058",
+    "created_timestamp": "2025-01-17T11:29:43.928000",
+    "role": "system",
+    "type": "function_result",
+    "name": "get_metric_value",
+    "arguments": "{\"location_id\":\"c9cb27b1-fbb6-45f4-bb17-f837bb3e1a84\",\"metric\":\"temperature\"}",
+    "call_id": "call_jZWJPmzzocXfb0a3",
+    "result": {
+    "value": 69.030670165,
+    "unit": "F"
+    },
+    "id": "f38f26af-bee5-4201-bd4c-0c45d61e38aa",
+    "timestamp": "2025-01-17T16:29:43.928Z"
+},
+
+"""
