@@ -199,6 +199,11 @@ class AssistantRoom:
             # Register generic callback for all events
             self.api.register_event_callback("error", self._handle_openai_error)
             self.api.register_event_callback("response.done", self._handle_openai_response_done)
+            self.api.register_event_callback("response.audio.delta", self._handle_openai_rt_generic)
+            self.api.register_event_callback("response.audio_transcript.delta", self._handle_openai_rt_generic)
+            self.api.register_event_callback("response.text.delta", self._handle_openai_rt_generic)
+            self.api.register_event_callback("response.audio_transcript.done", self._handle_openai_rt_generic)
+            self.api.register_event_callback("conversation.item.input_audio_transcription.completed", self._handle_openai_rt_generic)
 
             # Get tool function map
             tool_map = self.assistant_functions.get_tool_function_map()
@@ -274,7 +279,6 @@ class AssistantRoom:
                 else:
                     logger.error(f"[OPENAI EVENT] [RESPONSE.DONE] No output found in response {response}")
                     return
-                #   type": "function_call",
                 if output_item.get('type') == "message":
                     output_item_content_list = output_item.get('content')
                     if not output_item_content_list:
@@ -327,7 +331,9 @@ class AssistantRoom:
                         "arguments": output_item.get('arguments'),
                         "call_id": output_item.get('call_id'),
                     })
-                    return
+                # Broadcast the message to all users in the room
+                logger.info(f"[OPENAI EVENT] [RESPONSE.DONE] Broadcasting message to all users in the room {self.room_id}")
+                await self.broadcast(f"receive_message {self.room_id}", None, event)
 
         except json.JSONDecodeError as e:
             logger.error(f"Error parsing OpenAI event in room {self.room_id}: {e}")
@@ -336,6 +342,11 @@ class AssistantRoom:
                 f"Error handling OpenAI event in room {self.room_id}: {e}",
                 exc_info=True,
             )
+
+    async def _handle_openai_rt_generic(self, event: dict) -> None:
+        """Handle generic OpenAI events"""
+        logger.info(f"[OPENAI EVENT] [GENERIC] Received OpenAI event in room {self.room_id}: {event}")
+        await self.broadcast(f"receive_message {self.room_id}", None, event)
 
     async def _handle_openai_error(
         self, error: str, event: Optional[dict] = None
@@ -412,14 +423,15 @@ class AssistantRoom:
             # Broadcast the message to all users in the room
             logger.info(f"[SEND MESSAGE] Broadcasting message to all users in the room {self.room_id}")
             await self.broadcast(f"receive_message {self.room_id}", sid, user_message)
-            client_message_id = message.get("id")
-            logger.info(f"[SEND MESSAGE] Emitting message_sent event for client message id {client_message_id}")
-            print(message)
-            await self.sio.emit(f'message_sent {client_message_id}', 
-                    {'success': True}, 
-                    room=sid, 
-                    namespace=self.namespace
-                )
+
+        # Send message sent event to client
+        client_message_id = message.get("id")
+        logger.info(f"[SEND MESSAGE] Emitting message_sent event for client message id {client_message_id}")
+        await self.sio.emit(f'message_sent {client_message_id}', 
+                {'success': True}, 
+                room=sid, 
+                namespace=self.namespace
+            )
 
         # Send the message to the AI
         await self.send_message_to_ai(message, sid, userid,model_id)
@@ -503,10 +515,7 @@ class AssistantRoom:
 
     async def broadcast(self, event_type: str, sid: str, data: dict) -> None:
         """Broadcast a message to all users in the room"""
-        # Get all Socket.IO rooms for debugging
-        # rooms = self.sio.rooms(sid=None, namespace=self.namespace)
-        # logger.info(f"[BROADCAST] All rooms in namespace {self.namespace}: {rooms}")
-        
+        logger.info(f"[BROADCAST] Broadcasting message to all users in the room {self.room_id}")
         await self.sio.emit(
             event_type,
             data,
