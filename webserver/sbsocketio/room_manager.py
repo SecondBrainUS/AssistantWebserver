@@ -71,6 +71,7 @@ class AssistantRoom:
         """ """
         self.room_id = room_id
         self.model_id = model_id
+        self.namespace = namespace
 
         # Create model instance
         if model_id == "gpt-4o-realtime-preview-2024-12-17":
@@ -81,11 +82,11 @@ class AssistantRoom:
         self.api.set_tool_call_callback(self._handle_function_result)
         
         self.connected_users: set[str] = set()
-        self.message_count = 0
         self.connection_manager = connection_manager
         
         if chat_id:
             self.chat_id = chat_id
+
 
         self._aiapi_connection_attempt = 0
         self.MAX_CONNECTION_ATTEMPTS = 5
@@ -244,6 +245,7 @@ class AssistantRoom:
         })
 
         # TODO: issue, need to send the message to the room
+
         return
 
     async def _handle_openai_response_done(self, event: dict) -> None:
@@ -384,7 +386,45 @@ class AssistantRoom:
                 }
             )
 
-    async def send_message(self, message: dict, sid: str, model_id: str) -> None:
+    async def handle_send_message(self, message: dict, sid: str, model_id: str) -> None:
+        """Handle sending a message."""
+        logger.info(f"[SEND MESSAGE] Handling send message in room {self.room_id}")
+        if not self.chat_id:
+            logger.error(f"No chat_id found for room {self.room_id}")
+            return
+
+        # Get user data from connection manager if needed
+        logger.info(f"[SEND MESSAGE] Getting user data for socket {sid}")
+        userid = self.connection_manager.get_user_id(sid)
+        if not userid:
+            logger.error(f"No user data found for user {userid}")
+            return
+        
+        if message.get("type") == "conversation.item.create":
+            # Format user message for broadcasting to other users
+            user_message = {
+                "room_id": self.room_id,
+                "message": message,
+                'type': 'user.message',
+                'user_id': userid,
+            }
+        
+            # Broadcast the message to all users in the room
+            logger.info(f"[SEND MESSAGE] Broadcasting message to all users in the room {self.room_id}")
+            await self.broadcast(f"receive_message {self.room_id}", sid, user_message)
+            client_message_id = message.get("id")
+            logger.info(f"[SEND MESSAGE] Emitting message_sent event for client message id {client_message_id}")
+            print(message)
+            await self.sio.emit(f'message_sent {client_message_id}', 
+                    {'success': True}, 
+                    room=sid, 
+                    namespace=self.namespace
+                )
+
+        # Send the message to the AI
+        await self.send_message_to_ai(message, sid, userid,model_id)
+
+    async def send_message_to_ai(self, message: dict, sid: str, userid: str, model_id: str) -> None:
         """Send a message to the OpenAI API."""
         try:       
             if not self.api.is_connected():
@@ -394,13 +434,6 @@ class AssistantRoom:
 
                 logger.warning(f"[SEND MESSAGE] [OPENAI WEBSOCKET] OpenAI API is not connected, attempting to reconnect #{self._aiapi_connection_attempt} {self.room_id}")
                 await self.initialize_openai_socket()
-
-            # Get user data from connection manager if needed
-            logger.info(f"[SEND MESSAGE] Getting user data for socket {sid}")
-            userid = self.connection_manager.get_user_id(sid)
-            if not userid:
-                logger.error(f"No user data found for user {userid}")
-                return
 
             # If not a user conversation message, just send it to the API
             if message.get("type") != "conversation.item.create":
@@ -412,51 +445,11 @@ class AssistantRoom:
 
             logger.info(f"[SEND MESSAGE] ", message)
 
-            # chat_id = message.get("chat_id")
-            if not self.chat_id:
-                # TODO: add background task to name the chat by LLM, update the chat with the name by ID
-                chat_id = str(uuid.uuid4())
-                chat = {
-                    "chat_id": chat_id,
-                    "user_id": userid,
-                    "created_timestamp": datetime.now(),
-                }
-                self.chat_id = chat_id
-                save_chat_result = await save_chat(chat)
-                if save_chat_result.get("success"):
-                    logger.info(f"[SEND MESSAGE] Saved chat")
-                    # Emit chat_created event with the new chat_id
-                    if self._message_callback:
-                        await self._message_callback({
-                            "event_type": "chat_created",
-                            "data": {"chat_id": chat_id},
-                            "room_id": self.room_id
-                        })
-                else:
-                    logger.error(f"[SEND MESSAGE] Error saving chat: {save_chat_result.get('error')}")
-                    return
-
-            self.message_count += 1
             # Extract auto_execute setting from message if present
             auto_execute = message.get("auto_execute_functions", False)
             self.api.set_auto_execute_functions(auto_execute)
 
             raw_chat_message = message["data"]["item"]
-
-            # Verify message type and content type
-            if raw_chat_message["type"] != "conversation.item.create":
-                logger.error(
-                    f"[SEND MESSAGE] Message is not a conversation.item.create: {raw_chat_message['type']}"
-                )
-                # await self._handle_message_error("Invalid message type", message=message, sender_sid=message.get("sender_sid"))
-                # return
-            if raw_chat_message["content"][0]["type"] != "input_text":
-                logger.error(
-                    f"[SEND MESSAGE] Message is not an input_text: {raw_chat_message['content'][0]['type']}"
-                )
-                # await self._handle_message_error("Invalid content type", message=message, sender_sid=message.get("sender_sid"))
-                # return
-
             chat_message_content = raw_chat_message["content"][0]["text"]
 
             role = "user"
@@ -479,7 +472,7 @@ class AssistantRoom:
             )
 
             # Send the actual message
-            logger.info(f"[SEND MESSAGE] HERE FUCKING NOTHING {message}")
+            logger.info(f"[SEND MESSAGE] Sending message to AI: {message}")
             await self.api.send_event(
                 event_type=message["type"], data=message.get("data", {})
             )
@@ -508,13 +501,18 @@ class AssistantRoom:
         except Exception as e:
             logger.error(f"Error cleaning up room {self.room_id}: {e}")
 
-    async def broadcast(self, event_type: str, data: dict) -> None:
+    async def broadcast(self, event_type: str, sid: str, data: dict) -> None:
         """Broadcast a message to all users in the room"""
+        # Get all Socket.IO rooms for debugging
+        # rooms = self.sio.rooms(sid=None, namespace=self.namespace)
+        # logger.info(f"[BROADCAST] All rooms in namespace {self.namespace}: {rooms}")
+        
         await self.sio.emit(
             event_type,
             data,
             room=self.room_id,
-            namespace='/assistant'  # adjust namespace as needed
+            skip_sid=sid,
+            namespace=self.namespace
         )
 
 
@@ -584,13 +582,3 @@ class AssistantRoomManager:
             
             await room.cleanup()
             logger.info(f"Room {room_id} removed")
-
-    # TODO: example code
-    # async def save_message(self, room_id: str, message: dict):
-    #     """Save a message to the database"""
-    #     try:
-    #         messages_collection = mongodb_client.db["messages"]
-    #         await messages_collection.insert_one(message)
-    #         logger.info(f"Message saved for room {room_id}")
-    #     except Exception as e:
-    #         logger.error(f"Error saving message for room {room_id}: {e}", exc_info=True)
