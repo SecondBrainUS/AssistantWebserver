@@ -606,27 +606,3 @@ class AssistantRoomManager:
             
             await room.cleanup()
             logger.info(f"Room {room_id} removed")
-
-"""
-{'call_id': 'call_7heXQ8uXZMieiHGh', 'function': {'name': 'get_metric_value', 'arguments': '{"location_id":"c9cb27b1-fbb6-45f4-bb17-f837bb3e1a84","metric":"temperature"}'}, 'timestamp': '2025-01-17T16:51:07.357992+00:00'}
-{'value': 69.28902816749999, 'unit': 'F'}
-
-{
-    "_id": "678a85773610daaaef8882dd",
-    "message_id": "f38f26af-bee5-4201-bd4c-0c45d61e38aa",
-    "chat_id": "0f1a3f3a-d3e8-4282-959b-9fc452a1d058",
-    "created_timestamp": "2025-01-17T11:29:43.928000",
-    "role": "system",
-    "type": "function_result",
-    "name": "get_metric_value",
-    "arguments": "{\"location_id\":\"c9cb27b1-fbb6-45f4-bb17-f837bb3e1a84\",\"metric\":\"temperature\"}",
-    "call_id": "call_jZWJPmzzocXfb0a3",
-    "result": {
-    "value": 69.030670165,
-    "unit": "F"
-    },
-    "id": "f38f26af-bee5-4201-bd4c-0c45d61e38aa",
-    "timestamp": "2025-01-17T16:29:43.928Z"
-},
-
-"""

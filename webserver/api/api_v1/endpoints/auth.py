@@ -197,7 +197,7 @@ async def login_success_redirect(request: Request, response: Response):
         return HTMLResponse(content=redirect_html)
 
     except Exception as e:
-        print(f"Error in login_success_redirect: {str(e)}")
+        logger.error(f"[AUTH] Error in login_success_redirect: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/validate-token")
@@ -365,57 +365,3 @@ async def refresh_token(request: Request, response: Response):
         
     except Exception as e:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
-
-# Example protected endpoint
-@router.get("/protected-example")
-async def protected_example(
-    request: Request, 
-    current_user: dict = Depends(get_current_user),
-    memcache_client: aiomcache.Client = Depends(get_memcache_client)
-    ):
-    # Add debug logging
-    logger.info(f"FIND ME")
-    logger.info(f"Headers received: {dict(request.headers)}")
-    logger.info(f"Current user: {current_user}")
-
-    session_id = request.cookies.get("session_id")
-    if not session_id:
-        raise HTTPException(status_code=401, detail="No session ID")
-    
-    user_session = await memcache_client.get(session_id.encode())
-    logger.info(f"User ID: {user_session.decode()}")
-    return {
-        "message": "This is a protected endpoint",
-        "user": user_session
-    }
-
-
-"""
-@router.post('/setcookie')
-async def setcookie(request: Request, response: Response):
-    response.set_cookie(
-        key="ASD",
-        value="ASDASDASD",
-        httponly=True,
-        secure=False if settings.SYSTEM_MODE == "dev" else True,
-        samesite="strict",
-        domain=None,
-        path="/",
-        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    )
-    return {"message": "Cookie set"}
-
-    
-
-def create_jwt_token(user, userinfo):
-    payload = {
-        "sub": str(user.user_id),
-        "user_id": str(user.user_id),
-        "email": user.email,
-        "auth_type": user.auth_type,
-        "picture": userinfo.get("picture"),
-        "name": userinfo.get("name")
-    }
-    token = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
-    return token
-"""
