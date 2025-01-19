@@ -289,8 +289,12 @@ async def validate_token(
 async def get_user_info(request: Request):
     # Get access token from cookie
     access_token = request.cookies.get("access_token")
+    session_id = request.cookies.get("session_id")
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if not session_id:
+        raise HTTPException(status_code=401, detail="No session")
     
     try:
         payload = jwt.decode(
@@ -310,10 +314,18 @@ async def logout(response: Response):
     return {"message": "Logged out successfully"}
 
 @router.post("/refresh")
-async def refresh_token(request: Request, response: Response):
+async def refresh_token(
+    request: Request, 
+    response: Response,
+    db: Session = Depends(get_db),
+    memcache_client: aiomcache.Client = Depends(get_memcache_client)
+):
     refresh_token = request.cookies.get("refresh_token")
-    if not refresh_token:
-        raise HTTPException(status_code=401, detail="No refresh token")
+    session_id = request.cookies.get("session_id")
+    
+    # TODO: split
+    if not refresh_token or not session_id:
+        raise HTTPException(status_code=401, detail="No refresh token or session ID")
     
     try:
         # Verify refresh token
@@ -326,7 +338,6 @@ async def refresh_token(request: Request, response: Response):
             raise HTTPException(status_code=401, detail="Invalid token type")
         
         # Get user data from database
-        db = next(get_db())
         user = db.query(User).filter(User.user_id == payload["sub"]).first()
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
@@ -340,13 +351,36 @@ async def refresh_token(request: Request, response: Response):
         
         access_token, new_refresh_token = create_tokens(user_data)
         
+        # Calculate new expiry times
+        access_token_expires = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        refresh_token_expires = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        session_expires = datetime.utcnow() + timedelta(minutes=settings.SESSION_ID_EXPIRE_MINUTES)
+
+        # Update session in database
+        session = db.query(UserSession).filter(UserSession.session_id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=401, detail="Invalid session")
+
+        session.session_expires = session_expires
+        session.access_token_expires = access_token_expires
+        session.refresh_token_expires = refresh_token_expires
+        session.access_token = access_token
+        session.refresh_token = new_refresh_token
+        db.commit()
+
+        # Update session in cache
+        await memcache_client.set(
+            session_id.encode(),
+            json.dumps(user_data).encode()
+        )
+        
         # Set new cookies
         response.set_cookie(
             key="access_token",
             value=access_token,
             secure=False if settings.SYSTEM_MODE == "dev" else True,
             httponly=True,
-            samesite="lax",
+            samesite="lax" if settings.SYSTEM_MODE == "dev" else "strict",
             path="/",
             max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
         )
@@ -356,14 +390,26 @@ async def refresh_token(request: Request, response: Response):
             value=new_refresh_token,
             secure=False if settings.SYSTEM_MODE == "dev" else True,
             httponly=True,
-            samesite="lax",
+            samesite="lax" if settings.SYSTEM_MODE == "dev" else "strict",
             path="/",
             max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+        )
+
+        # Update session cookie expiry
+        response.set_cookie(
+            key="session_id",
+            value=session_id,
+            secure=False if settings.SYSTEM_MODE == "dev" else True,
+            httponly=True,
+            samesite="lax" if settings.SYSTEM_MODE == "dev" else "strict",
+            path="/",
+            max_age=settings.SESSION_ID_EXPIRE_MINUTES * 60
         )
         
         return {"status": "success"}
         
     except Exception as e:
+        logger.error(f"[AUTH] Error in refresh_token: {str(e)}")
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
 # Example protected endpoint
