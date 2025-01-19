@@ -157,3 +157,21 @@ ERRORS = Counter('http_errors_total', 'Total HTTP errors', ['method', 'endpoint'
 
 for local, 1 promtail for all apps
 for prod, 1 promtail per app
+
+for local, for multi app:
+scrape_configs:
+  - job_name: app1
+    static_configs:
+      - targets: ['localhost']
+        labels:
+          job: app1
+          environment: local
+          __path__: C:/path/to/app1/logs/*.log
+
+  - job_name: app2
+    static_configs:
+      - targets: ['localhost']
+        labels:
+          job: app2
+          environment: local
+          __path__: C:/path/to/app2/logs/*.log
