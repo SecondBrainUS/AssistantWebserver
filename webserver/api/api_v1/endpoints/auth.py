@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from jose import jwt
 from webserver.config import settings
 from webserver.db.assistantdb.connection import get_db
-from webserver.db.assistantdb.model import User, AuthGoogle, UserSession
+from webserver.db.assistantdb.model import User, AuthGoogle, UserSession, UserWhitelist
 import uuid
 import aiomcache
 import logging
@@ -154,6 +154,17 @@ async def callback(provider: str, request: Request, response: Response, db: Sess
     if provider == "google":
         token = await google.authorize_access_token(request)
         userinfo = token.get('userinfo')
+        if not userinfo:
+            raise HTTPException(status_code=401, detail="No userinfo")
+        if userinfo.get("email_verified") != True:
+            raise HTTPException(status_code=401, detail="Email not verified")
+        email = userinfo.get("email")
+        if not email:
+            raise HTTPException(status_code=401, detail="No email")
+        
+        user_whitelist = db.query(UserWhitelist).filter(UserWhitelist.email == email).one_or_none()
+        if not user_whitelist:
+            raise HTTPException(status_code=401, detail="Email not whitelisted")
     else:
         return {"message": "Provider not supported"}
 

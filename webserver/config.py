@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
+from typing import Optional
 import os
 
 class Settings(BaseSettings):
@@ -60,9 +61,13 @@ class Settings(BaseSettings):
     SENSOR_VALUES_HOST_CRITTENDEN: str
     SENSOR_VALUES_METRICS: str
     SENSOR_VALUES_CRITTENDEN_GROUP_ID: str
+
+    # User Whitelist
+    USER_WHITELIST: Optional[str]
     
 dotenv_path = os.getenv('ENVPATH', 'env/.env.local')
 print(dotenv_path)
 load_dotenv(dotenv_path=dotenv_path)
 
 settings = Settings()
+

@@ -74,3 +74,16 @@ class UserSession(Base):
             "created": self.created,
             "updated": self.updated,
         }
+    
+class UserWhitelist(Base):
+    __tablename__ = "user_whitelist"
+    email = Column(String, primary_key=True)
+    created = Column(DateTime, default=func.now())
+    updated = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    def to_dict(self):
+        return {
+            "email": self.email,
+            "created": self.created,
+            "updated": self.updated,
+        }
