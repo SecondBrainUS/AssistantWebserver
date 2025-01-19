@@ -50,7 +50,7 @@ async def get_chats(
     """
 
     user_id = request.state.user["user_id"]
-    user_id = ensure_uuid(user_id)  # Convert to string UUID
+    user_id = ensure_uuid(user_id)
     
     try:
         # Get total count for pagination info
@@ -58,7 +58,7 @@ async def get_chats(
         
         # Fetch paginated chats for this user
         chats = await mongodb_client.db["chats"].find({"user_id": user_id}) \
-            .sort("created_at", -1) \
+            .sort("created_timestamp", -1) \
             .skip(offset) \
             .limit(limit) \
             .to_list(length=limit)
@@ -85,8 +85,8 @@ async def get_chats(
 @router.get("/{chat_id}", dependencies=[Depends(verify_access_token), Depends(get_session)])
 async def get_chat(chat_id: str, request: Request):
     user_id = request.state.user["user_id"]
-    user_id = ensure_uuid(user_id)  # Convert to string UUID
-    chat_id = ensure_uuid(chat_id)  # Convert to string UUID
+    user_id = ensure_uuid(user_id)
+    chat_id = ensure_uuid(chat_id)
     
     try:
         chat = await mongodb_client.db["chats"].find_one({
