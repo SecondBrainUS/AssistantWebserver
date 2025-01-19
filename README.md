@@ -134,3 +134,26 @@ http {
         add_header X-XSS-Protection "1; mode=block";
     }
 }
+
+prompt for observability and monitoring
+
+I have a few python applications that i develop locally and deploy for production on AWS Fargate. I run these apps in docker for both local dev and production.
+
+I'd like to add observabilility and monitoring with prometheus, loki, and grafana. These should work for both local and production. id like to use promtail to feed the logs into loki. For production, id like to have long term storage in S3 using mimir.
+
+write a docker compose for the local environment
+write a cloud formation config for the production environment
+
+write configs for loki, prometheus, promtail, and grafana for both local and production.
+
+think carefully about the configurations. follow best practices.
+
+write example python code for prometheus counters.
+
+Prometheus mini example code
+from prometheus_client import Counter
+REQUESTS = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint'])
+ERRORS = Counter('http_errors_total', 'Total HTTP errors', ['method', 'endpoint'])
+
+for local, 1 promtail for all apps
+for prod, 1 promtail per app
