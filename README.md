@@ -44,11 +44,16 @@ On send_message, in the assistant namespace we override the message callback so 
 cd C:\Users\alexa\Desktop\Development\SecondBrain\AssistantWebserver
 poetry run uvicorn webserver.main:app --reload
 
-docker build -t assistant_webserver .
+
 
 cd C:\Users\alexa\Desktop\Development\SecondBrain\AssistantWebClient\assistant-web-client
 npm run dev
 
+poetry update assistant
+poetry install
+docker build --no-cache -t assistant_webserver .
+OR
+docker-compose build assistant_webserver
 
 docker run --name assistantdb -e POSTGRES_PASSWORD=password -d -p 5432:5432 postgres
 docker run -d --name chatdb -p 27017:27017 -e MONGO_INITDB_DATABASE=my_database mongo
