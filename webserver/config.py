@@ -6,6 +6,7 @@ import os
 class Settings(BaseSettings):
     # System Variables
     SYSTEM_MODE: str
+    PORT: int
 
     # AssistantDB
     ASSISTANTDB_URL: str
@@ -29,12 +30,6 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int
     JWT_REFRESH_SECRET_KEY: str
     SESSION_ID_EXPIRE_MINUTES: int
-
-    # Picovoice
-    PICOVOICE_ACCESS_KEY: str
-
-    # Discord
-    DISCORD_TOKEN: str
 
     # OpenAI
     OPENAI_API_KEY: str
@@ -65,6 +60,10 @@ class Settings(BaseSettings):
     # User Whitelist
     USER_WHITELIST: Optional[str]
     
+    @property
+    def CORS_ALLOWED_ORIGINS(self) -> list:
+        return [self.FRONTEND_URL, self.BASE_URL]
+
 dotenv_path = os.getenv('ENVPATH', 'env/.env.local')
 print(dotenv_path)
 load_dotenv(dotenv_path=dotenv_path)

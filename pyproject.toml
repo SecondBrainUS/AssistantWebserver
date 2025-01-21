@@ -11,7 +11,8 @@ fastapi = "^0.115.0"
 uvicorn = "^0.31.0"
 python-dotenv = "^1.0.1"
 pydantic-settings = "^2.5.2"
-assistant = {path = "../Assistant/assistant", develop = true}
+# assistant = {path = "../Assistant/assistant", develop = true}
+assistant = {git = "https://github.com/SecondBrainUS/Assistant.git", branch = "master"}
 pylint = "^3.3.1"
 boto3 = "^1.35.49"
 python-multipart = "^0.0.17"

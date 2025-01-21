@@ -12,7 +12,7 @@ def create_socketio_app():
         async_mode='asgi',
         logger=True,
         engineio_logger=True,
-        cors_allowed_origins=["http://localhost:3000", settings.BASE_URL],
+        cors_allowed_origins=settings.CORS_ALLOWED_ORIGINS,
         ping_timeout=60,
         ping_interval=25,
         transports=['websocket', 'polling'],

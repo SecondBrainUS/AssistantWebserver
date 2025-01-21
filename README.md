@@ -44,6 +44,8 @@ On send_message, in the assistant namespace we override the message callback so 
 cd C:\Users\alexa\Desktop\Development\SecondBrain\AssistantWebserver
 poetry run uvicorn webserver.main:app --reload
 
+docker build -t assistant_webserver .
+
 cd C:\Users\alexa\Desktop\Development\SecondBrain\AssistantWebClient\assistant-web-client
 npm run dev
 

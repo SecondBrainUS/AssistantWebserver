@@ -40,4 +40,4 @@ async def shutdown_event():
 
 def start():
     """Launched with `poetry run dev` at the root level"""
-    uvicorn.run("webserver.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("webserver.main:app", host="0.0.0.0", port=settings.PORT, reload=True)
