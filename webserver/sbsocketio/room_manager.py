@@ -4,8 +4,8 @@ import json
 import uuid
 from typing import Dict, Optional
 from datetime import datetime
-from assistant_realtime_openai import OpenAIRealTimeAPI
-from assistant_functions import AssistantFunctions
+from assistant.assistant_realtime_openai import OpenAIRealTimeAPI
+from assistant.assistant_functions import AssistantFunctions
 import socketio
 from webserver.config import settings
 from webserver.db.chatdb.db import mongodb_client

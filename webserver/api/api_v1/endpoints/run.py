@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, BackgroundTasks, UploadFile, File, Form
 from typing import List, Any, Optional, Dict
 from pydantic import BaseModel, Field
-from assistant import Assistant
-from assistant_functions import AssistantFunctions
+from assistant.core import Assistant
+from assistant.assistant_functions import AssistantFunctions
 from webserver.middleware.server_exceptions import BaseHTTPException
 from webserver.config import settings
 from fastapi.responses import StreamingResponse

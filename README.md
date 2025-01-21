@@ -56,6 +56,8 @@ docker run --name my-memcache -p 11211:11211 -d memcached
 docker build -t sb-web-nginx .
 docker run -d --name sb-web-nginx -p 8090:80 sb-web-nginx
 
+docker run --name assistant_webserver -d -p 8000:8000 assistant_webserver
+
 # TODO: keep EBS for big files like images
 # TODO: FIX error Directory C:\Users\alexa\Desktop\Development\SecondBrain\Assistant\assistant for assistant does not seem to be a Python package
 
