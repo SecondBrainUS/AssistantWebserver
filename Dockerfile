@@ -2,7 +2,6 @@ FROM python:3.11-buster AS builder
 
 RUN pip install poetry==1.8.3
 
-# Configure git to use token
 ARG GITHUB_TOKEN
 RUN git config --global url."https://oauth2:${GITHUB_TOKEN}@github.com".insteadOf "https://github.com"
 
