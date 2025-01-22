@@ -432,7 +432,6 @@ class AssistantRoom:
                 "room_id": self.room_id,
                 "message": message,
                 'type': 'user.message',
-                'user_id': userid,
             }
         
             # Broadcast the message to all users in the room
