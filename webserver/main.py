@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 from webserver.api.api_v1.router import api_router
 from webserver.middleware.server_exceptions import load_exception_handlers
 from webserver.sbsocketio import sio_app
@@ -25,6 +26,8 @@ app.add_middleware(
     expose_headers=["*"]
 )
 
+Instrumentator().instrument(app).expose(app, include_in_schema=False)
+
 app.add_middleware(SessionMiddleware, secret_key=settings.JWT_SECRET_KEY)
 load_exception_handlers(app)
 app.include_router(api_router)
@@ -39,5 +42,4 @@ async def shutdown_event():
     await mongodb_client.close()
 
 def start():
-    """Launched with `poetry run dev` at the root level"""
     uvicorn.run("webserver.main:app", host="0.0.0.0", port=settings.PORT, reload=True)

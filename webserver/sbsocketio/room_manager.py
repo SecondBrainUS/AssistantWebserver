@@ -13,6 +13,7 @@ from webserver.sbsocketio.connection_manager import ConnectionManager
 from bson import Binary
 from uuid import UUID
 from webserver.db.chatdb.uuid_utils import uuid_to_binary, ensure_uuid
+from webserver.tools.stocks import get_tool_function_map as get_stocks_tool_map
 logger = logging.getLogger(__name__)
 
 async def save_message(message: dict):
@@ -115,7 +116,12 @@ class AssistantRoom:
         logger.info(f"Set chat_id {chat_id} for room {self.room_id}")
 
     async def initialize_openai_socket(self):
-        tool_map = self.assistant_functions.get_tool_function_map()
+        # Get tool maps from both sources
+        assistant_tool_map = self.assistant_functions.get_tool_function_map()
+        stocks_tool_map = get_stocks_tool_map()
+        
+        # Merge the tool maps
+        tool_map = {**assistant_tool_map, **stocks_tool_map}
 
         await self.api.connect()
 
@@ -204,7 +210,12 @@ class AssistantRoom:
             self.api.register_event_callback("conversation.item.input_audio_transcription.completed", self._handle_openai_rt_generic)
 
             # Get tool function map
-            tool_map = self.assistant_functions.get_tool_function_map()
+            # Get tool maps from both sources
+            assistant_tool_map = self.assistant_functions.get_tool_function_map()
+            stocks_tool_map = get_stocks_tool_map()
+            
+            # Merge the tool maps
+            tool_map = {**assistant_tool_map, **stocks_tool_map}
 
             # Register tool functions with API
             self.api.set_tool_function_map(tool_map)

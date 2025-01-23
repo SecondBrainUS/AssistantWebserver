@@ -37,6 +37,7 @@ class MongoDBClient:
         try:
             await self.db.create_collection("chats")
             await self.db.create_collection("messages")
+            await self.db.create_collection("finance")
             logger.info("Collections created successfully.")
         except CollectionInvalid:
             logger.info("Collections already exist.")
@@ -44,11 +45,13 @@ class MongoDBClient:
     async def create_indexes(self):
         chats = await self.get_collection("chats")
         messages = await self.get_collection("messages")
+        finance = await self.get_collection("finance")
 
         await chats.create_index([("participant_user_ids", 1), ("last_message_at", -1)], background=True)
         await chats.create_index([("owner_user_id", 1)], background=True)
         await messages.create_index([("chat_id", 1), ("created_at", -1)], background=True)
         await messages.create_index([("user_id", 1)], background=True)
+        await finance.create_index([("type", 1)], background=True)
         logger.info("Indexes created successfully.")
 
 mongodb_client = MongoDBClient() 
