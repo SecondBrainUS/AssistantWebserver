@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str
     OPENAI_REALTIME_ENDPOINT_URL: str
 
+    # Perplexity
+    PERPLEXITY_API_KEY: str
+
     MODELS_FILEPATH: str
 
     # Assistant Functions Integration Variable sets

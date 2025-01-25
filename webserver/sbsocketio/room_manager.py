@@ -1,19 +1,17 @@
 import logging
-import asyncio
 import json
 import uuid
+import socketio
 from typing import Dict, Optional
 from datetime import datetime
+from webserver.config import settings
 from assistant.assistant_realtime_openai import OpenAIRealTimeAPI
 from assistant.assistant_functions import AssistantFunctions
-import socketio
-from webserver.config import settings
 from webserver.db.chatdb.db import mongodb_client
-from webserver.sbsocketio.connection_manager import ConnectionManager
-from bson import Binary
-from uuid import UUID
 from webserver.db.chatdb.uuid_utils import uuid_to_binary, ensure_uuid
+from webserver.sbsocketio.connection_manager import ConnectionManager
 from webserver.tools.stocks import get_tool_function_map as get_stocks_tool_map
+from webserver.tools.perplexity import get_tool_function_map as get_perplexity_tool_map
 logger = logging.getLogger(__name__)
 
 async def save_message(message: dict):
@@ -116,12 +114,17 @@ class AssistantRoom:
         logger.info(f"Set chat_id {chat_id} for room {self.room_id}")
 
     async def initialize_openai_socket(self):
-        # Get tool maps from both sources
+        # Get tool maps from all sources
         assistant_tool_map = self.assistant_functions.get_tool_function_map()
         stocks_tool_map = get_stocks_tool_map()
+        perplexity_tool_map = get_perplexity_tool_map()
         
-        # Merge the tool maps
-        tool_map = {**assistant_tool_map, **stocks_tool_map}
+        # Merge all tool maps
+        tool_map = {
+            **assistant_tool_map, 
+            **stocks_tool_map,
+            **perplexity_tool_map
+        }
 
         await self.api.connect()
 
@@ -210,12 +213,16 @@ class AssistantRoom:
             self.api.register_event_callback("conversation.item.input_audio_transcription.completed", self._handle_openai_rt_generic)
 
             # Get tool function map
-            # Get tool maps from both sources
             assistant_tool_map = self.assistant_functions.get_tool_function_map()
             stocks_tool_map = get_stocks_tool_map()
+            perplexity_tool_map = get_perplexity_tool_map()
             
-            # Merge the tool maps
-            tool_map = {**assistant_tool_map, **stocks_tool_map}
+            # Merge all tool maps
+            tool_map = {
+                **assistant_tool_map, 
+                **stocks_tool_map,
+                **perplexity_tool_map
+            }
 
             # Register tool functions with API
             self.api.set_tool_function_map(tool_map)
@@ -548,7 +555,6 @@ class AssistantRoom:
             skip_sid=sid,
             namespace=self.namespace
         )
-
 
 class AssistantRoomManager:
     def __init__(self, api_key: str, endpoint_url: str, connection_manager, sio: socketio.AsyncServer):

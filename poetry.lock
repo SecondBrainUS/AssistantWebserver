@@ -190,7 +190,7 @@ yfinance = "^0.2.43"
 type = "git"
 url = "https://github.com/SecondBrainUS/Assistant.git"
 reference = "master"
-resolved_reference = "dbf694e2ac9402c37ba1bf328058d24ded771e2e"
+resolved_reference = "a465162ae7911d996e4bfd86fb020a564e8c63a8"
 
 [[package]]
 name = "astroid"
