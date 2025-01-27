@@ -54,6 +54,9 @@ docker-compose up -d --force-recreate --build assistant_webserver
 cd C:\Users\alexa\Desktop\Development\SecondBrain\AssistantWebClient\assistant-web-client
 npm run dev
 
+docker-compose build --no-cache assistant_webclient
+docker-compose up -d --force-recreate assistant_webclient
+
 poetry update assistant
 poetry install
 docker build --no-cache -t assistant_webserver .
