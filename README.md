@@ -61,7 +61,8 @@ poetry update assistant
 poetry install
 docker build --no-cache -t assistant_webserver .
 OR
-docker-compose up -d build assistant_webserver
+docker-compose build assistant_webserver
+docker-compose up -d assistant_webserver
 
 docker run --name assistantdb -e POSTGRES_PASSWORD=password -d -p 5432:5432 postgres
 docker run -d --name chatdb -p 27017:27017 -e MONGO_INITDB_DATABASE=my_database mongo

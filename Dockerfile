@@ -36,4 +36,4 @@ COPY ./ ./app
 
 WORKDIR /app
 
-ENTRYPOINT ["python", "-m", "uvicorn", "webserver.main:app", "--host", "0.0.0.0"]
+ENTRYPOINT ["python", "-m", "uvicorn", "webserver.main:app", "--host", "0.0.0.0", "--reload"]
