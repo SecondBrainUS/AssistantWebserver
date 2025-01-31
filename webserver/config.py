@@ -45,9 +45,13 @@ class Settings(BaseSettings):
     # Perplexity
     PERPLEXITY_API_KEY: str
 
+    # Groq
+    GROQ_API_KEY: Optional[str] = None
+
     MODELS_FILEPATH: str
 
     # Assistant Functions Integration Variable
+
     # Notion
     NOTION_API_KEY: str
     NOTION_RUNNING_LIST_DATABASE_ID: str

@@ -138,11 +138,12 @@ class AssistantRealtimeNamespace(BaseNamespace):
         @self.sio.on('create_room', namespace=self.namespace)
         async def create_assistant_room(sid: str, data: dict):
             chat_id = data.get('chat_id')
+            model_api_source = data.get('model_api_source')
             model_id = data.get('model_id')
             room_uuid = str(uuid.uuid4())
             room_id = f"room_{room_uuid}"
 
-            success = await self.room_manager.create_room(room_id, self.namespace, model_id, chat_id)
+            success = await self.room_manager.create_room(room_id, self.namespace, model_api_source, model_id, chat_id)
             if success:
                 logger.info(f"Created assistant room: {room_id}")
                 await self.sio.emit(f'room_created {chat_id}', 

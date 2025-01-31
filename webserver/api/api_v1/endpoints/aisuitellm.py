@@ -37,6 +37,9 @@ def initialize_ai_suite() -> AISuiteWrapper:
                 "access_key_id": settings.AWS_ACCESS_KEY_ID,
                 "secret_access_key": settings.AWS_SECRET_ACCESS_KEY
             }
+    
+        if settings.GROQ_API_KEY:
+            config["groq"] = {"api_key": settings.GROQ_API_KEY}
         
         ai_suite = AISuiteWrapper(config=config)
         
@@ -48,7 +51,10 @@ def initialize_ai_suite() -> AISuiteWrapper:
             notion_notes_page_id=settings.NOTION_NOTES_PAGE_ID,
             gcal_credentials_path=settings.GCAL_CREDENTIALS_PATH,
             gcal_token_path=settings.GCAL_TOKEN_PATH,
-            gcal_auth_method="service_account"
+            gcal_auth_method="service_account",
+            sensor_values_host=settings.SENSOR_VALUES_HOST_CRITTENDEN,
+            sensor_values_metrics=settings.SENSOR_VALUES_METRICS,
+            sensor_values_group_id=settings.SENSOR_VALUES_CRITTENDEN_GROUP_ID
         )
         
         # Set tool configuration
@@ -102,7 +108,6 @@ async def chat_completion(request: ChatRequest):
                     "call_id": result.call_id,
                     "name": result.name,
                     "result": result.result,
-                    "result_message": result.result_message
                 }
                 for result in response.tool_results
             ],

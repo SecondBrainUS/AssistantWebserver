@@ -3,6 +3,7 @@ import json
 import uuid
 import socketio
 from typing import Dict, Optional
+from abc import ABC, abstractmethod
 from datetime import datetime
 from webserver.config import settings
 from assistant.assistant_realtime_openai import OpenAIRealTimeAPI
@@ -58,37 +59,23 @@ class AssistantRoom:
         room_id: str,
         namespace: str,
         model_id: str,
-        api_key: str,
-        endpoint_url: str,
         connection_manager: ConnectionManager,
         auto_execute_functions: bool = False,
         sio: socketio.AsyncServer = None,
         chat_id: Optional[str] = None,
     ):
-        """ """
+        self.sio = sio
         self.room_id = room_id
         self.model_id = model_id
         self.namespace = namespace
+        self.auto_execute_functions = auto_execute_functions
 
-        # Create model instance
-        if model_id == "gpt-4o-realtime-preview-2024-12-17":
-            self.api = OpenAIRealTimeAPI(api_key, endpoint_url)
-        else:
-            raise ValueError(f"Unsupported model: {model_id}")
-        self.api.set_auto_execute_functions(auto_execute_functions)
-        self.api.set_tool_call_callback(self._handle_function_result)
-        
         self.connected_users: set[str] = set()
         self.connection_manager = connection_manager
         
         if chat_id:
             self.chat_id = chat_id
 
-
-        self._aiapi_connection_attempt = 0
-        self.MAX_CONNECTION_ATTEMPTS = 5
-
-        # Initialize AssistantFunctions
         self.assistant_functions = AssistantFunctions(
             openai_api_key=settings.OPENAI_API_KEY,
             notion_api_key=settings.NOTION_API_KEY,
@@ -102,35 +89,96 @@ class AssistantRoom:
             sensor_values_group_id=settings.SENSOR_VALUES_CRITTENDEN_GROUP_ID,
         )
 
-        # Store message callback for broadcasting
-        self._message_callback = None
-        self._message_error_callback = None
-
-        self.sio = sio  # Add Socket.IO instance
-
-    def set_chat_id(self, chat_id: str):
-        """Set the chat ID associated with this room"""
-        self.chat_id = chat_id
-        logger.info(f"Set chat_id {chat_id} for room {self.room_id}")
-
-    async def initialize_openai_socket(self):
         # Get tool maps from all sources
         assistant_tool_map = self.assistant_functions.get_tool_function_map()
         stocks_tool_map = get_stocks_tool_map()
         perplexity_tool_map = get_perplexity_tool_map()
         
         # Merge all tool maps
-        tool_map = {
+        self.tool_map = {
             **assistant_tool_map, 
             **stocks_tool_map,
             **perplexity_tool_map
         }
 
+
+    def set_chat_id(self, chat_id: str):
+        """Set the chat ID associated with this room"""
+
+        self.chat_id = chat_id
+        logger.info(f"Set chat_id {chat_id} for room {self.room_id}")
+
+    async def _handle_message_error(
+        self,
+        error: str,
+        message: Optional[dict] = None,
+        sender_sid: Optional[str] = None,
+    ) -> None:
+        """Handle errors related to user messages."""
+        logger.error(f"Message error in room {self.room_id}: {error}")
+        if message:
+            logger.debug(f"Error message details: {message}")
+
+        await self.broadcast(f"error {self.room_id}", sender_sid, {"error": error})
+
+    def add_user(self, sid: str):
+        """Add a user to the room"""
+        self.connected_users.add(sid)
+        logger.info(f"User {sid} added to room {self.room_id}")
+
+    def remove_user(self, sid: str):
+        """Remove a user from the room"""
+        self.connected_users.discard(sid)
+        logger.info(f"User {sid} removed from room {self.room_id}")
+
+    async def broadcast(self, event_type: str, sid: str, data: dict) -> None:
+        """Broadcast a message to all users in the room"""
+        logger.info(f"[BROADCAST] Broadcasting message to all users in the room {self.room_id}")
+        await self.sio.emit(
+            event_type,
+            data,
+            room=self.room_id,
+            skip_sid=sid,
+            namespace=self.namespace
+        )
+    
+    @abstractmethod
+    async def initialize(self) -> bool:
+        pass
+
+    @abstractmethod
+    async def handle_send_message(self, message: dict, sid: str, model_id: str) -> None:
+        pass
+
+    @abstractmethod
+    async def send_message_to_ai(self, message: dict, sid: str, userid: str, model_id: str) -> None:
+        pass
+
+    @abstractmethod
+    async def cleanup(self):
+        pass
+
+class OpenAiRealTimeRoom(AssistantRoom):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        if self.model_id == "gpt-4o-realtime-preview-2024-12-17":
+            self.api = OpenAIRealTimeAPI(settings.OPENAI_API_KEY, settings.OPENAI_REALTIME_ENDPOINT_URL)
+        else:
+            raise ValueError(f"Unsupported model: {self.model_id}")
+        
+        self.api.set_auto_execute_functions(self.auto_execute_functions)
+        self.api.set_tool_call_callback(self._handle_function_result)
+
+        self.api_connection_attempts = 0
+        self.MAX_CONNECTION_ATTEMPTS = 5
+
+    async def initialize_openai_socket(self):
         await self.api.connect()
 
         # Format tools for session update
         tools = []
-        for name, meta in tool_map.items():
+        for name, meta in self.tool_map.items():
             logger.info(f"Tool name: {name}, meta: {meta}")
             tool = {
                 "type": "function",
@@ -212,20 +260,8 @@ class AssistantRoom:
             self.api.register_event_callback("response.audio_transcript.done", self._handle_openai_rt_generic)
             self.api.register_event_callback("conversation.item.input_audio_transcription.completed", self._handle_openai_rt_generic)
 
-            # Get tool function map
-            assistant_tool_map = self.assistant_functions.get_tool_function_map()
-            stocks_tool_map = get_stocks_tool_map()
-            perplexity_tool_map = get_perplexity_tool_map()
-            
-            # Merge all tool maps
-            tool_map = {
-                **assistant_tool_map, 
-                **stocks_tool_map,
-                **perplexity_tool_map
-            }
-
             # Register tool functions with API
-            self.api.set_tool_function_map(tool_map)
+            self.api.set_tool_function_map(self.tool_map)
 
             # Connect to OpenAI
             await self.initialize_openai_socket()
@@ -239,15 +275,7 @@ class AssistantRoom:
         except Exception as e:
             logger.error(f"Error initializing room {self.room_id}: {e}", exc_info=True)
             return False
-
-    def set_message_callback(self, callback: callable) -> None:
-        """Set the callback for broadcasting messages to room members."""
-        self._message_callback = callback
-
-    def set_message_error_callback(self, callback: callable) -> None:
-        """Set the callback for sending error messages to the original sender."""
-        self._message_error_callback = callback
-
+        
     async def _handle_function_result(self, tool_call: dict, result: dict) -> None:
         """Handle tool call callback"""
         logger.info(f"[TOOL CALL] Received tool call callback in room {self.room_id}: {tool_call.get('call_id')} {result}")
@@ -283,9 +311,8 @@ class AssistantRoom:
         }
 
         await self.broadcast(f"receive_message {self.room_id}", None, function_result_message)
-
         return
-
+        
     async def _handle_openai_response_done(self, event: dict) -> None:
         """Handle all messages from OpenAI and broadcast to room."""
         logger.info(f"[OPENAI EVENT] Received OpenAI event in room {self.room_id}: {event}")
@@ -386,49 +413,10 @@ class AssistantRoom:
     ) -> None:
         """Handle errors from OpenAI."""
         logger.error(f"OpenAI error in room {self.room_id}: {error}")
-        
-        # Check if error is a dict containing session expiration info
         if isinstance(error, dict) and error.get('error', {}).get('code') == 'session_expired':
             logger.info(f"Session expired for room {self.room_id}, cleaning up")
+            await self.broadcast(f"error {self.room_id}", None, {"error": "OpenAI Realtime session has expired"})
             await self.cleanup()
-            # Signal room manager to remove this room
-            if self._message_callback:
-                await self._message_callback({
-                    "event_type": "error",
-                    "data": {"error": "Chat session has expired"},
-                    "room_id": self.room_id
-                })
-            return
-
-        # Handle other errors as before
-        if self._message_callback:
-            await self._message_callback({
-                "event_type": "error",
-                "data": {"error": error, "event": event},
-                "room_id": self.room_id
-            })
-
-    async def _handle_message_error(
-        self,
-        error: str,
-        message: Optional[dict] = None,
-        sender_sid: Optional[str] = None,
-    ) -> None:
-        """Handle errors related to user messages."""
-        logger.error(f"Message error in room {self.room_id}: {error}")
-        if message:
-            logger.debug(f"Error message details: {message}")
-
-        # Send error to the original sender if callback is set and sender_sid is provided
-        if self._message_error_callback and sender_sid:
-            await self._message_error_callback(
-                {
-                    "event_type": "message_error",
-                    "data": {"error": error, "message": message},
-                    "room_id": self.room_id,
-                    "sender_sid": sender_sid,
-                }
-            )
 
     async def handle_send_message(self, message: dict, sid: str, model_id: str) -> None:
         """Handle sending a message."""
@@ -472,11 +460,11 @@ class AssistantRoom:
         """Send a message to the OpenAI API."""
         try:       
             if not self.api.is_connected():
-                if self._aiapi_connection_attempt > self.MAX_CONNECTION_ATTEMPTS:
+                if self.api_connection_attempts > self.MAX_CONNECTION_ATTEMPTS:
                     logger.error("[SEND MESSAGE] [OPENAI WEBSOCKET] Max connection attempts reached")
                     return
 
-                logger.warning(f"[SEND MESSAGE] [OPENAI WEBSOCKET] OpenAI API is not connected, attempting to reconnect #{self._aiapi_connection_attempt} {self.room_id}")
+                logger.warning(f"[SEND MESSAGE] [OPENAI WEBSOCKET] OpenAI API is not connected, attempting to reconnect #{self.api_connection_attempts} {self.room_id}")
                 await self.initialize_openai_socket()
 
             # If not a user conversation message, just send it to the API
@@ -527,16 +515,6 @@ class AssistantRoom:
             )
             raise
 
-    def add_user(self, sid: str):
-        """Add a user to the room"""
-        self.connected_users.add(sid)
-        logger.info(f"User {sid} added to room {self.room_id}")
-
-    def remove_user(self, sid: str):
-        """Remove a user from the room"""
-        self.connected_users.discard(sid)
-        logger.info(f"User {sid} removed from room {self.room_id}")
-
     async def cleanup(self):
         """Cleanup room resources"""
         try:
@@ -545,16 +523,12 @@ class AssistantRoom:
         except Exception as e:
             logger.error(f"Error cleaning up room {self.room_id}: {e}")
 
-    async def broadcast(self, event_type: str, sid: str, data: dict) -> None:
-        """Broadcast a message to all users in the room"""
-        logger.info(f"[BROADCAST] Broadcasting message to all users in the room {self.room_id}")
-        await self.sio.emit(
-            event_type,
-            data,
-            room=self.room_id,
-            skip_sid=sid,
-            namespace=self.namespace
-        )
+class AiSuiteRoom(AssistantRoom):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    async def send_message_to_ai(self, message: dict, sid: str, userid: str, model_id: str) -> None:
+        pass
 
 class AssistantRoomManager:
     def __init__(self, api_key: str, endpoint_url: str, connection_manager, sio: socketio.AsyncServer):
@@ -565,22 +539,29 @@ class AssistantRoomManager:
         self.endpoint_url = endpoint_url
         self.connection_manager = connection_manager
 
-    async def create_room(self, room_id: str, namespace: str, model_id: str, chat_id: str) -> bool:
+    async def create_room(self, room_id: str, namespace: str, model_api_source: str, model_id: str, chat_id: str) -> bool:
         """Create a new room with OpenAI API instance"""
         if room_id in self.rooms:
             logger.warning(f"Room {room_id} already exists")
             return False
-
-        room = AssistantRoom(
-            room_id, 
-            namespace,
-            model_id,
-            self.api_key, 
-            self.endpoint_url, 
-            self.connection_manager,
+        
+        room_types = {
+            "openai_realtime": OpenAiRealTimeRoom,
+            "aisuite": AiSuiteRoom,
+        }
+        room_class = room_types.get(model_api_source.lower())
+        if not room_class:
+            raise ValueError(f"Unsupported API source: {model_api_source}")
+            
+        room: AssistantRoom = room_class(
+            room_id=room_id, 
+            namespace=namespace,
+            model_id=model_id,
+            connection_manager=self.connection_manager,
             sio=self.sio,
             chat_id=chat_id
         )
+        
         success = await room.initialize()
 
         if success:

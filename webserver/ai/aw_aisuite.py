@@ -23,7 +23,6 @@ class ToolResult:
     name: str  # Name of the tool that was called
     arguments: dict  # Original arguments for context
     result: Any  # Result from the tool execution
-    result_message: Optional[str] = None  # Model's response to the result
 
 @dataclass
 class AIResponse:
@@ -218,10 +217,6 @@ class AISuiteWrapper:
                     )
                     
                     final_content = final_response.choices[0].message.content
-                    
-                    # Store the model's response to the tool results
-                    for tool_result in tool_results:
-                        tool_result.result_message = final_content
                     
                     # Check if more tool calls are needed
                     if not final_response.choices[0].message.tool_calls:
