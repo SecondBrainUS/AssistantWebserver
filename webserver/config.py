@@ -35,12 +35,19 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str
     OPENAI_REALTIME_ENDPOINT_URL: str
 
+    # AWS
+    AWS_ACCESS_KEY_ID: Optional[str] = None
+    AWS_SECRET_ACCESS_KEY: Optional[str] = None
+
+    # Anthropic
+    ANTHROPIC_API_KEY: Optional[str] = None
+
     # Perplexity
     PERPLEXITY_API_KEY: str
 
     MODELS_FILEPATH: str
 
-    # Assistant Functions Integration Variable sets
+    # Assistant Functions Integration Variable
     # Notion
     NOTION_API_KEY: str
     NOTION_RUNNING_LIST_DATABASE_ID: str

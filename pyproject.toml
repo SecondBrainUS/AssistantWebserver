@@ -29,6 +29,7 @@ pymongo = "4.9.0"
 motor = "^3.6.0"
 aiomcache = "^0.8.2"
 prometheus-fastapi-instrumentator = "^7.0.2"
+aisuite = {extras = ["all"], version = "^0.1.8"}
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
