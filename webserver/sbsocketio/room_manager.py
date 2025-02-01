@@ -12,22 +12,8 @@ from webserver.db.chatdb.db import mongodb_client
 from webserver.sbsocketio.connection_manager import ConnectionManager
 from webserver.tools.stocks import get_tool_function_map as get_stocks_tool_map
 from webserver.tools.perplexity import get_tool_function_map as get_perplexity_tool_map
-from webserver.db.chatdb.models import DBChat, DBMessageText, DBMessageFunctionCall, DBMessageFunctionResult
+from webserver.db.chatdb.models import DBMessageText, DBMessageFunctionCall, DBMessageFunctionResult
 logger = logging.getLogger(__name__)
-
-async def save_message(message: dict):
-    """Save a message to the database"""
-    message_id = message["message_id"]
-    try:
-        messages_collection = mongodb_client.db["messages"]
-        await messages_collection.insert_one(message)
-        logger.info(f"Message saved for message_id {message_id}")
-        return {"success": True, "message_id": message_id}
-    except Exception as e:
-        logger.error(
-            f"Error saving message for message_id {message_id}: {e}", exc_info=True
-        )
-        return {"error": str(e)}
 
 class AssistantRoom:
     def __init__(
@@ -77,7 +63,6 @@ class AssistantRoom:
             **perplexity_tool_map
         }
 
-
     def set_chat_id(self, chat_id: str):
         """Set the chat ID associated with this room"""
         self.chat_id = chat_id
@@ -117,6 +102,20 @@ class AssistantRoom:
             namespace=self.namespace
         )
     
+    async def save_message(message: dict):
+        """Save a message to the database"""
+        message_id = message["message_id"]
+        try:
+            messages_collection = mongodb_client.db["messages"]
+            await messages_collection.insert_one(message)
+            logger.info(f"Message saved for message_id {message_id}")
+            return {"success": True, "message_id": message_id}
+        except Exception as e:
+            logger.error(
+                f"Error saving message for message_id {message_id}: {e}", exc_info=True
+            )
+            return {"error": str(e)}
+
     @abstractmethod
     async def initialize(self) -> bool:
         pass
@@ -258,7 +257,7 @@ class OpenAiRealTimeRoom(AssistantRoom):
         function_call = tool_call.get('function')
         timestamp = tool_call.get('timestamp')
         
-        message_model = DBMessageFunctionResult(
+        db_message = DBMessageFunctionResult(
             message_id=messageid,
             chat_id=self.chat_id,
             model_id=self.model_id,
@@ -272,7 +271,7 @@ class OpenAiRealTimeRoom(AssistantRoom):
             result=result
         )
         
-        save_message_result = await save_message(message_model.model_dump())
+        save_message_result = await self.save_message(db_message.model_dump())
         logger.info(f"[FUNCTION RESULT] Saving function result for message_id {messageid}")
 
         function_result_message = {
@@ -342,7 +341,7 @@ class OpenAiRealTimeRoom(AssistantRoom):
                     role = output_item.get('role')
                     model_id = self.model_id
                     usage = event.get('usage')
-                    message_model = DBMessageText(
+                    db_message = DBMessageText(
                         message_id=messageid,
                         chat_id=self.chat_id,
                         model_id=model_id,
@@ -350,31 +349,35 @@ class OpenAiRealTimeRoom(AssistantRoom):
                         created_timestamp=created_timestamp,
                         role=role,
                         content=content_item_text,
+
                         modality=content_item_type,
                         type="message",
                         usage=usage,
                     )
-                    save_message_result = await save_message(message_model.model_dump())
+                    save_message_result = await self.save_message(db_message.model_dump())
                 if output_item.get('type') == "function_call":
                     messageid = str(uuid.uuid4())
+
+
                     created_timestamp = datetime.now()
                     role = "system"
                     model_id = self.model_id
                     usage = response.get('usage')
-                    message_model = DBMessageFunctionCall(
+                    db_message = DBMessageFunctionCall(
                         message_id=messageid,
                         chat_id=self.chat_id,
                         model_id=model_id,
                         model_api_source="openai_realtime",
                         created_timestamp=created_timestamp,
                         role=role,
+
                         type="function_call",
                         usage=usage,
                         name=output_item.get('name'),
                         arguments=output_item.get('arguments'),
                         call_id=output_item.get('call_id'),
                     )
-                    save_message_result = await save_message(message_model.model_dump())
+                    save_message_result = await self.save_message(db_message.model_dump())
                 # Broadcast the message to all users in the room
                 logger.info(f"[OPENAI EVENT] [RESPONSE.DONE] Broadcasting message to all users in the room {self.room_id}")
                 await self.broadcast(f"receive_message {self.room_id}", None, event)
@@ -473,7 +476,7 @@ class OpenAiRealTimeRoom(AssistantRoom):
             created_timestamp = datetime.now()
             modality = "text"
 
-            message_model = DBMessageText(
+            db_message = DBMessageText(
                 message_id=messageid,
                 chat_id=self.chat_id,
                 user_id=userid,
@@ -485,19 +488,20 @@ class OpenAiRealTimeRoom(AssistantRoom):
                 modality=modality,
                 type="message"
             )
-            save_message_result = await save_message(message_model.model_dump())
+            save_message_result = await self.save_message(db_message.model_dump())
 
             # Send the actual message
             logger.info(f"[SEND MESSAGE] Sending message to AI: {message}")
             await self.api.send_event(
                 event_type=message["type"], data=message.get("data", {})
             )
+
             
         except Exception as e:
             logger.error(
                 f"Error sending message in room {self.room_id}: {e}", exc_info=True
             )
-            raise
+            raise e
 
     async def cleanup(self):
         """Cleanup room resources"""
