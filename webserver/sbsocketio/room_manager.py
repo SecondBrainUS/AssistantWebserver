@@ -561,7 +561,7 @@ class AssistantRoomManager:
             sio=self.sio,
             chat_id=chat_id
         )
-        
+
         success = await room.initialize()
 
         if success:
