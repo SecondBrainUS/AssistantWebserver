@@ -1,11 +1,10 @@
 import logging
 import traceback
 import uuid
-from typing import Optional
 from http.cookies import SimpleCookie
 from webserver.config import settings
 from .base import BaseNamespace
-from ..room_manager import AssistantRoomManager
+from webserver.sbsocketio.assistant_room_manager import AssistantRoomManager
 from jose import jwt
 import json
 from datetime import datetime
@@ -19,8 +18,6 @@ class AssistantRealtimeNamespace(BaseNamespace):
     def __init__(self, sio, connection_manager):
         super().__init__(sio, connection_manager)
         self.room_manager = AssistantRoomManager(
-            api_key=settings.OPENAI_API_KEY,
-            endpoint_url=settings.OPENAI_REALTIME_ENDPOINT_URL,
             connection_manager=self.connection_manager,
             sio=self.sio
         )

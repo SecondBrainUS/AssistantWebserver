@@ -24,10 +24,12 @@ class DBMessageBase(BaseModel):
     type: Literal["message", "function_call", "function_result"]
     usage: Optional[Dict[str, Any]] = None
 
-    class Config:
-        json_encoders = {
+    model_config = {
+        'protected_namespaces': (),
+        'json_encoders': {
             datetime: lambda v: v.isoformat()
         }
+    }
 
 class DBMessageText(DBMessageBase):
     content: str
