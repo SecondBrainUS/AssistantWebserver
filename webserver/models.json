@@ -2,10 +2,11 @@
 	"models": [
 		{
 			"model_id": "gpt-4o-realtime-preview-2024-12-17",
+			"model_api_source": "openai_realtime",
+			"provider": "OpenAI",
 			"display_name": "OpenAI GPT-4o Realtime Preview",
 			"full_name": "OpenAI GPT-4o Realtime Preview 2024-12-17",
-			"description": "GPT-4o Realtime Preview",
-			"provider": "OpenAI"
+			"description": "GPT-4o Realtime Preview"
 		}
 	]
 }

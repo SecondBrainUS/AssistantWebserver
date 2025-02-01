@@ -1,6 +1,5 @@
-from bson import ObjectId, Binary
+from bson import ObjectId
 from datetime import datetime
-from uuid import UUID
 
 def serialize_doc(doc):
     """Convert MongoDB document to JSON-serializable dict."""
@@ -12,8 +11,4 @@ def serialize_doc(doc):
         return str(doc)
     elif isinstance(doc, datetime):
         return doc.isoformat()
-    elif isinstance(doc, UUID):
-        return str(doc)
-    elif isinstance(doc, Binary):
-        return str(UUID(bytes=doc))  # Convert Binary UUID back to string
     return doc 

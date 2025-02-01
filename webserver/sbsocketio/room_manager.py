@@ -2,30 +2,23 @@ import logging
 import json
 import uuid
 import socketio
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 from abc import ABC, abstractmethod
 from datetime import datetime
 from webserver.config import settings
 from assistant.assistant_realtime_openai import OpenAIRealTimeAPI
 from assistant.assistant_functions import AssistantFunctions
 from webserver.db.chatdb.db import mongodb_client
-from webserver.db.chatdb.uuid_utils import uuid_to_binary, ensure_uuid
 from webserver.sbsocketio.connection_manager import ConnectionManager
 from webserver.tools.stocks import get_tool_function_map as get_stocks_tool_map
 from webserver.tools.perplexity import get_tool_function_map as get_perplexity_tool_map
+from webserver.db.chatdb.models import DBChat, DBMessageText, DBMessageFunctionCall, DBMessageFunctionResult
 logger = logging.getLogger(__name__)
 
 async def save_message(message: dict):
     """Save a message to the database"""
     message_id = message["message_id"]
     try:
-        # Use our utility function that handles the conversion properly
-        message["message_id"] = uuid_to_binary(message_id)
-        if "chat_id" in message:
-            message["chat_id"] = uuid_to_binary(message["chat_id"])
-        if "user_id" in message:
-            message["user_id"] = ensure_uuid(message["user_id"])
-            
         messages_collection = mongodb_client.db["messages"]
         await messages_collection.insert_one(message)
         logger.info(f"Message saved for message_id {message_id}")
@@ -34,23 +27,6 @@ async def save_message(message: dict):
         logger.error(
             f"Error saving message for message_id {message_id}: {e}", exc_info=True
         )
-        return {"error": str(e)}
-
-async def save_chat(chat: dict):
-    """Save a chat to the database"""
-    chat_id = chat["chat_id"]
-    try:
-        # Use our utility function that handles the conversion properly
-        chat["chat_id"] = uuid_to_binary(chat_id)
-        if "user_id" in chat:
-            chat["user_id"] = ensure_uuid(chat["user_id"])
-            
-        chats_collection = mongodb_client.db["chats"]
-        await chats_collection.insert_one(chat)
-        logger.info(f"Chat saved for chat_id {chat_id}")
-        return {"success": True, "chat_id": chat_id}
-    except Exception as e:
-        logger.error(f"Error saving chat for chat_id {chat_id}: {e}", exc_info=True)
         return {"error": str(e)}
 
 class AssistantRoom:
@@ -104,7 +80,6 @@ class AssistantRoom:
 
     def set_chat_id(self, chat_id: str):
         """Set the chat ID associated with this room"""
-
         self.chat_id = chat_id
         logger.info(f"Set chat_id {chat_id} for room {self.room_id}")
 
@@ -282,17 +257,22 @@ class OpenAiRealTimeRoom(AssistantRoom):
         messageid = str(uuid.uuid4())
         function_call = tool_call.get('function')
         timestamp = tool_call.get('timestamp')
-        save_message_result = await save_message({ 
-            "message_id": messageid,
-            "chat_id": self.chat_id,
-            "created_timestamp": timestamp,
-            "role": "system",
-            "type": "function_result",
-            "name": function_call.get('name'),
-            "arguments": function_call.get('arguments'),
-            "call_id": tool_call.get('call_id'),
-            "result": result,
-        })
+        
+        message_model = DBMessageFunctionResult(
+            message_id=messageid,
+            chat_id=self.chat_id,
+            model_id=self.model_id,
+            model_api_source="openai_realtime",
+            created_timestamp=timestamp,
+            role="system",
+            type="function_result",
+            name=function_call.get('name'),
+            arguments=json.dumps(function_call.get('arguments')),
+            call_id=tool_call.get('call_id'),
+            result=result
+        )
+        
+        save_message_result = await save_message(message_model.model_dump())
         logger.info(f"[FUNCTION RESULT] Saving function result for message_id {messageid}")
 
         function_result_message = {
@@ -362,35 +342,39 @@ class OpenAiRealTimeRoom(AssistantRoom):
                     role = output_item.get('role')
                     model_id = self.model_id
                     usage = event.get('usage')
-                    save_message_result = await save_message({ 
-                        "message_id": messageid,
-                        "chat_id": self.chat_id,
-                        "model_id": model_id,
-                        "created_timestamp": created_timestamp,
-                        "role": role,
-                        "content": content_item_text,
-                        "modality": content_item_type,
-                        "type": "message",
-                        "usage": usage,
-                    })
+                    message_model = DBMessageText(
+                        message_id=messageid,
+                        chat_id=self.chat_id,
+                        model_id=model_id,
+                        model_api_source="openai_realtime",
+                        created_timestamp=created_timestamp,
+                        role=role,
+                        content=content_item_text,
+                        modality=content_item_type,
+                        type="message",
+                        usage=usage,
+                    )
+                    save_message_result = await save_message(message_model.model_dump())
                 if output_item.get('type') == "function_call":
                     messageid = str(uuid.uuid4())
                     created_timestamp = datetime.now()
                     role = "system"
                     model_id = self.model_id
                     usage = response.get('usage')
-                    save_message_result = await save_message({ 
-                        "message_id": messageid,
-                        "chat_id": self.chat_id,
-                        "model_id": model_id,
-                        "created_timestamp": created_timestamp,
-                        "role": role,
-                        "type": "function_call",
-                        "usage": usage,
-                        "name": output_item.get('name'),
-                        "arguments": output_item.get('arguments'),
-                        "call_id": output_item.get('call_id'),
-                    })
+                    message_model = DBMessageFunctionCall(
+                        message_id=messageid,
+                        chat_id=self.chat_id,
+                        model_id=model_id,
+                        model_api_source="openai_realtime",
+                        created_timestamp=created_timestamp,
+                        role=role,
+                        type="function_call",
+                        usage=usage,
+                        name=output_item.get('name'),
+                        arguments=output_item.get('arguments'),
+                        call_id=output_item.get('call_id'),
+                    )
+                    save_message_result = await save_message(message_model.model_dump())
                 # Broadcast the message to all users in the room
                 logger.info(f"[OPENAI EVENT] [RESPONSE.DONE] Broadcasting message to all users in the room {self.room_id}")
                 await self.broadcast(f"receive_message {self.room_id}", None, event)
@@ -489,19 +473,19 @@ class OpenAiRealTimeRoom(AssistantRoom):
             created_timestamp = datetime.now()
             modality = "text"
 
-            save_message_result = await save_message(
-                {
-                    "message_id": messageid,
-                    "chat_id": self.chat_id,
-                    "user_id": userid,
-                    "model_id": model_id,
-                    "created_timestamp": created_timestamp,
-                    "role": role,
-                    "content": chat_message_content,
-                    "modality": modality,
-                    "type": "message",
-                }
+            message_model = DBMessageText(
+                message_id=messageid,
+                chat_id=self.chat_id,
+                user_id=userid,
+                model_id=model_id,
+                model_api_source="openai_realtime",
+                created_timestamp=created_timestamp,
+                role=role,
+                content=chat_message_content,
+                modality=modality,
+                type="message"
             )
+            save_message_result = await save_message(message_model.model_dump())
 
             # Send the actual message
             logger.info(f"[SEND MESSAGE] Sending message to AI: {message}")

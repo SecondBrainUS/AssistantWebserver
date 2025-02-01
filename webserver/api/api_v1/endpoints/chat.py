@@ -8,7 +8,7 @@ from webserver.db.chatdb.db import mongodb_client
 from typing import Optional
 from webserver.api.dependencies import verify_access_token, get_session
 from webserver.db.chatdb.utils import serialize_doc
-from webserver.db.chatdb.uuid_utils import uuid_to_binary, ensure_uuid
+from webserver.db.chatdb.models import DBChat
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,6 @@ async def get_chats(
     """
 
     user_id = request.state.user["user_id"]
-    user_id = ensure_uuid(user_id)
     
     try:
         # Get total count for pagination info
@@ -85,8 +84,6 @@ async def get_chats(
 @router.get("/{chat_id}", dependencies=[Depends(verify_access_token), Depends(get_session)])
 async def get_chat(chat_id: str, request: Request):
     user_id = request.state.user["user_id"]
-    user_id = ensure_uuid(user_id)
-    chat_id = ensure_uuid(chat_id)
     
     try:
         chat = await mongodb_client.db["chats"].find_one({
@@ -107,8 +104,6 @@ async def get_chat(chat_id: str, request: Request):
 @router.get("/{chat_id}/messages", dependencies=[Depends(verify_access_token), Depends(get_session)])
 async def get_messages(chat_id: str, request: Request):
     user_id = request.state.user["user_id"]
-    user_id = ensure_uuid(user_id)  # Convert to string UUID
-    chat_id = ensure_uuid(chat_id)  # Convert to string UUID
     
     try:
         # First verify the chat belongs to the user
@@ -131,8 +126,6 @@ async def get_messages(chat_id: str, request: Request):
 @router.delete("/{chat_id}", dependencies=[Depends(verify_access_token), Depends(get_session)])
 async def delete_chat(chat_id: str, request: Request):
     user_id = request.state.user["user_id"]
-    user_id = ensure_uuid(user_id)  # Convert to string UUID
-    chat_id = ensure_uuid(chat_id)  # Convert to string UUID
     
     try:
         # First verify the chat belongs to the user
@@ -169,28 +162,28 @@ async def delete_chat(chat_id: str, request: Request):
 @router.post("", dependencies=[Depends(verify_access_token), Depends(get_session)])
 async def create_chat(request: Request):
     user_id = request.state.user["user_id"]
-    user_id = ensure_uuid(user_id)
     
     body = await request.json()
     model_id = body.get("model_id")
+    model_api_source = body.get("model_api_source")
     if not model_id:
         raise HTTPException(status_code=400, detail="Model ID is required")
 
-    chat_id = str(uuid.uuid4())
-    chat_id = uuid_to_binary(chat_id)
-    created_timestamp = datetime.now()
+    chat = DBChat(
+        chat_id=str(uuid.uuid4()),
+        user_id=user_id,
+        current_model_id=model_id,
+        current_model_api_source=model_api_source,
+        created_timestamp=datetime.now()
+    )
+
     try:
-        chat = await mongodb_client.db["chats"].insert_one({
-            "chat_id": chat_id,
-            "user_id": user_id,
-            "current_model_id": model_id,
-            "created_timestamp": created_timestamp
-        })
+        await mongodb_client.db["chats"].insert_one(chat.model_dump())
     except Exception as e:
-        logger.error(f"Error creating chat {chat_id}: {e}", exc_info=True)
+        logger.error(f"Error creating chat {chat.chat_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
     return JSONResponse(
-        content={"chat_id": chat_id},
+        content={"chat_id": chat.chat_id},
         status_code=status.HTTP_200_OK
     )
