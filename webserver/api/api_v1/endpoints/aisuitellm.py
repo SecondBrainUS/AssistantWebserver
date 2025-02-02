@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from webserver.config import settings
-from webserver.ai.aw_aisuite import AISuiteWrapper
+from webserver.ai.aw_aisuite import AISuiteAssistant
 from assistant.assistant_functions import AssistantFunctions
 
 router = APIRouter()
@@ -19,7 +19,7 @@ class ChatRequest(BaseModel):
     model: str = Field("anthropic:claude-3-sonnet", description="Model identifier")
     temperature: float = Field(0.7, description="Sampling temperature", ge=0.0, le=1.0)
 
-def initialize_ai_suite() -> AISuiteWrapper:
+def initialize_ai_suite() -> AISuiteAssistant:
     """Initialize AISuite with configuration and tools."""
     try:
         # Initialize AI Suite with provider configurations
@@ -41,7 +41,7 @@ def initialize_ai_suite() -> AISuiteWrapper:
         if settings.GROQ_API_KEY:
             config["groq"] = {"api_key": settings.GROQ_API_KEY}
         
-        ai_suite = AISuiteWrapper(config=config)
+        ai_suite = AISuiteAssistant(config=config)
         
         # Initialize and register assistant functions
         assistant_functions = AssistantFunctions(

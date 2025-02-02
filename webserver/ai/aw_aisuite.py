@@ -3,20 +3,18 @@ import uuid
 import logging
 import asyncio
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
+from pydantic import BaseModel
 import aisuite
 
 logger = logging.getLogger(__name__)
 
-@dataclass
-class ToolCall:
+class ToolCall(BaseModel):
     """Represents a single tool call"""
     id: str
     name: str
     arguments: dict
 
-@dataclass
-class ToolResult:
+class ToolResult(BaseModel):
     """Represents the result of a tool call"""
     id: str  # Unique ID for the result message
     call_id: str  # ID of the original tool call
@@ -24,8 +22,7 @@ class ToolResult:
     arguments: dict  # Original arguments for context
     result: Any  # Result from the tool execution
 
-@dataclass
-class AIResponse:
+class AIResponse(BaseModel):
     """Standardized response format for both regular messages and tool-using conversations"""
     id: str
     content: str
@@ -35,7 +32,7 @@ class AIResponse:
     stop_reason: Optional[str]
     conversation_messages: List[Dict]  # Full conversation including tool interactions
 
-class AISuiteWrapper:
+class AISuiteAssistant:
     def __init__(self, config: Optional[Dict] = None):
         """
         Initialize the AI Suite wrapper with optional configuration.

@@ -16,8 +16,6 @@ from webserver.db.chatdb.models import DBMessageText, DBMessageFunctionCall, DBM
 from webserver.sbsocketio.assistant_room import AssistantRoom
 logger = logging.getLogger(__name__)
 
-
-
 class AiSuiteRoom(AssistantRoom):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

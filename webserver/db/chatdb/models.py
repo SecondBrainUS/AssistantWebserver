@@ -1,6 +1,6 @@
 from datetime import datetime
-from typing import Literal, Optional, Any, Union, Dict
-from pydantic import BaseModel, Field, field_validator
+from typing import Literal, Optional, Any, Dict
+from pydantic import BaseModel
 
 class DBChat(BaseModel):
     chat_id: str
