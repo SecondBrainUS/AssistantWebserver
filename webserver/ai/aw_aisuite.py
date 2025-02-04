@@ -82,7 +82,7 @@ class AISuiteAssistant:
             }
         } for name, meta in self._tool_function_map.items()]
 
-    async def _execute_tool(self, tool_call: ToolCall) -> Any:
+    async def _execute_tool(self, tool_call: AiSuiteAsstFunctionCall) -> Any:
         """Execute a tool and get its result"""
         if tool_call.name not in self._tool_function_map:
             raise ValueError(f"Unknown tool: {tool_call.name}")
@@ -105,7 +105,7 @@ class AISuiteAssistant:
             logger.error(f"Tool execution error: {e}")
             raise
 
-    def _create_tool_message(self, tool_result: ToolResult) -> Dict:
+    def _create_tool_message(self, tool_result: AiSuiteAsstFunctionResult) -> Dict:
         """Create a message from a tool result"""
         return {
             "role": "assistant",
@@ -246,7 +246,7 @@ class AISuiteAssistant:
                     # Add all tool calls to the main list
                     tool_calls.extend(current_tool_calls)
                     
-                    # Get final response after tool calls - remove await
+                    # Get final response after tool calls
                     final_response = self.client.chat.completions.create(
                         model=model,
                         messages=conversation,
@@ -290,6 +290,4 @@ class AISuiteAssistant:
 Need to "stream" tool calls as them come out
 Need an "is_processing" variable
 then trigger "done" when final response is triggered
-
-
 """
