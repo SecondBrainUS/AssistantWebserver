@@ -6,8 +6,7 @@ from typing import Dict, Optional, Union
 from abc import ABC, abstractmethod
 from datetime import datetime
 from webserver.config import settings
-from assistant.assistant_realtime_openai import OpenAIRealTimeAPI
-from assistant.assistant_functions import AssistantFunctions
+from webserver.ai.aw_aisuite import AiSuiteAsstTextMessage, AiSuiteAsstFunctionCall, AiSuiteAsstFunctionResult, AISuiteAssistant
 from webserver.db.chatdb.db import mongodb_client
 from webserver.sbsocketio.connection_manager import ConnectionManager
 from webserver.tools.stocks import get_tool_function_map as get_stocks_tool_map
