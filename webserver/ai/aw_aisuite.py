@@ -31,7 +31,7 @@ class AiSuiteResponse(BaseModel):
     token_usage: Optional[Dict[str, int]]
     stop_reason: Optional[str]
 
-class AISuiteAssistant:
+class AiSuiteAssistant:
     def __init__(self, config: Optional[Dict] = None):
         """
         Initialize the AI Suite wrapper with optional configuration.

@@ -92,7 +92,7 @@ class AssistantRoom:
             namespace=self.namespace
         )
     
-    async def save_message(self, message: dict):
+    async def save_message(self, message: dict): # NEW TODO: add DBMessage type as the param, let this thing do the conversion
         """Save a message to the database"""
         message_id = message["message_id"]
         try:
