@@ -3,6 +3,7 @@ import uuid
 import logging
 import asyncio
 from typing import Dict, List, Optional, Any
+import aisuite.framework
 from pydantic import BaseModel
 import aisuite
 
@@ -15,11 +16,13 @@ class AiSuiteAsstTextMessage(BaseModel):
 
 class AiSuiteAsstFunctionCall(BaseModel):
     name: str
-    arguments: str
+    arguments: Any
     call_id: str
 
 class AiSuiteAsstFunctionResult(BaseModel):
     call_id: str
+    name: str
+    arguments: Any
     result: Any
 
 class AiSuiteResponse(BaseModel):
@@ -51,7 +54,8 @@ class AiSuiteAssistant:
         self._event_callbacks = {
             "tool_call": set(),
             "tool_result": set(),
-            "final_response": set()
+            "final_response": set(),
+            "error": set()
         }
 
     def set_tool_function_map(self, tool_map: Dict[str, Dict]):
@@ -108,7 +112,7 @@ class AiSuiteAssistant:
     def _create_tool_message(self, tool_result: AiSuiteAsstFunctionResult) -> Dict:
         """Create a message from a tool result"""
         return {
-            "role": "assistant",
+            "role": "tool",
             "tool_call_id": tool_result.call_id,  # This ID matches the original tool call
             "name": tool_result.name,
             "content": json.dumps({
@@ -145,7 +149,7 @@ class AiSuiteAssistant:
         messages: List[Dict],
         model: str,
         temperature: float = 0.7,
-        history_length: int = 20
+        history_length: Optional[int] = None
     ) -> AiSuiteResponse:
         """
         Generate a response using the AI model, handling both regular messages and tool calls.
@@ -154,14 +158,25 @@ class AiSuiteAssistant:
             messages: List of conversation messages
             model: Model identifier (e.g., "anthropic:claude-3")
             temperature: Sampling temperature
-            history_length: Number of most recent messages to include in context (default: 20)
+            history_length: Number of most recent messages to include in context (default: None, uses entire history)
             
         Returns:
             AiSuiteResponse object containing the response and any tool interactions
         """
+        # Add system prompt for tool usage
+        system_prompt = {
+            "role": "system",
+            "content": (
+                "After using the tools to get results for the user, provide a simple concise natural language response to the user."
+            )
+        }
 
-        # Take only the most recent messages based on history_length
-        conversation = messages[-history_length:].copy()
+        # Take entire history if history_length is None, otherwise take most recent messages
+        conversation = messages[-history_length:].copy() if history_length else messages.copy()
+        
+        # Insert system prompt at the beginning
+        conversation.insert(0, system_prompt)
+        
         tools = self._get_tools_config()
         response_id = str(uuid.uuid4())
         self._tool_chain_counter = 0
@@ -190,9 +205,9 @@ class AiSuiteAssistant:
                     # Process tool calls
                     for tool_call_data in response.choices[0].message.tool_calls:
                         tool_call = AiSuiteAsstFunctionCall(
-                            id=tool_call_data.id,
                             name=tool_call_data.function.name,
-                            arguments=json.loads(tool_call_data.function.arguments)
+                            arguments=json.loads(tool_call_data.function.arguments),
+                            call_id=tool_call_data.id
                         )
 
                         current_tool_calls.append(tool_call)
@@ -204,8 +219,7 @@ class AiSuiteAssistant:
                         try:
                             result = await self._execute_tool(tool_call)
                             tool_result = AiSuiteAsstFunctionResult(
-                                id=str(uuid.uuid4()),
-                                call_id=tool_call.id,
+                                call_id=tool_call.call_id,
                                 name=tool_call.name,
                                 arguments=tool_call.arguments,
                                 result=result
@@ -221,7 +235,7 @@ class AiSuiteAssistant:
                                 "role": "assistant",
                                 "content": None,
                                 "tool_calls": [{
-                                    "id": tool_call.id,
+                                    "id": tool_call.call_id,
                                     "type": "function",
                                     "function": {
                                         "name": tool_call.name,
@@ -235,7 +249,7 @@ class AiSuiteAssistant:
                             logger.error(f"Tool execution error for {tool_call.name}: {e}")
                             tool_result = AiSuiteAsstFunctionResult(
                                 id=str(uuid.uuid4()),
-                                call_id=tool_call.id,
+                                call_id=tool_call.call_id,
                                 name=tool_call.name,
                                 arguments=tool_call.arguments,
                                 result={"error": str(e)}
@@ -245,6 +259,7 @@ class AiSuiteAssistant:
                     
                     # Add all tool calls to the main list
                     tool_calls.extend(current_tool_calls)
+
                     
                     # Get final response after tool calls
                     final_response = self.client.chat.completions.create(
@@ -256,21 +271,27 @@ class AiSuiteAssistant:
                     
                     final_content = final_response.choices[0].message.content
                     
+                    # Construct token usage if available
+                    token_usage = None
+                    if hasattr(final_response, 'usage'):
+                        token_usage = {
+                            'prompt_tokens': final_response.usage.prompt_tokens,
+                            'completion_tokens': final_response.usage.completion_tokens,
+                            'total_tokens': final_response.usage.total_tokens
+                        }
+                    
                     # Trigger final response event when no more tool calls
                     if not final_response.choices[0].message.tool_calls:
-                        await self._trigger_event("final_response", final_content)
+                        # Create text message for final response
+                        final_message: AiSuiteAsstTextMessage = AiSuiteAsstTextMessage(
+                            content=final_content,
+                            token_usage=token_usage,
+                            stop_reason=getattr(final_response.choices[0], 'finish_reason', None)
+                        )
+                        await self._trigger_event("final_response", final_message)
                         break
                     
                     response = final_response
-
-            # Construct token usage if available
-            token_usage = None
-            if hasattr(response, 'usage'):
-                token_usage = {
-                    'prompt_tokens': response.usage.prompt_tokens,
-                    'completion_tokens': response.usage.completion_tokens,
-                    'total_tokens': response.usage.total_tokens
-                }
 
             return AiSuiteResponse(
                 id=response_id,
@@ -286,8 +307,4 @@ class AiSuiteAssistant:
             logger.error(f"Error generating response: {e}")
             raise
 
-"""
-Need to "stream" tool calls as them come out
-Need an "is_processing" variable
-then trigger "done" when final response is triggered
-"""
+#TODO: Need an "is_processing" variable

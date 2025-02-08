@@ -96,7 +96,7 @@ async def chat_completion(request: ChatRequest):
             "content": response.content,
             "tool_calls": [
                 {
-                    "id": tool_call.id,
+                    "id": tool_call.call_id,
                     "name": tool_call.name,
                     "arguments": tool_call.arguments
                 }
@@ -104,8 +104,7 @@ async def chat_completion(request: ChatRequest):
             ],
             "tool_results": [
                 {
-                    "id": result.id,
-                    "call_id": result.call_id,
+                    "id": result.call_id,
                     "name": result.name,
                     "result": result.result,
                 }

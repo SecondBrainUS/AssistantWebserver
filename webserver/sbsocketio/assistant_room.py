@@ -105,6 +105,12 @@ class AssistantRoom:
                 f"Error saving message for message_id {message_id}: {e}", exc_info=True
             )
             return {"error": str(e)}
+        
+    # TODO: wrap user message broadcasting and user message storage then call handle_send_message so derived class behavior runs
+    # TODO: also add self.connection_manager.get_user_id(sid) user id logic to the handle_send_message
+    # TODO: also wrap message_sent return event for original sender
+    async def _handle_room_message(self, message: dict, sid: str, model_id: str) -> None:
+        pass
 
     @abstractmethod
     async def initialize(self) -> bool:
