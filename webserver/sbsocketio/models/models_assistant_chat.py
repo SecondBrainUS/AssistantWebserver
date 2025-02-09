@@ -1,6 +1,9 @@
 from typing import Literal, Optional, Any, Dict
 from pydantic import BaseModel
 
+# TODO: use both a client_message_id and then an id from the server
+
+#sbaw.text_message.user
 class SBAWUserTextMessage(BaseModel):
 	id: str
 	content: str
@@ -8,7 +11,9 @@ class SBAWUserTextMessage(BaseModel):
 	role: str = 'user'
 	type: str = 'message'
 	modality: str = 'text'
+	created_timestamp: Optional[str]
 
+#sbaw.text_message.assistant
 class SBAWAssistantTextMessage(BaseModel):
 	id: str
 	content: str
@@ -18,7 +23,9 @@ class SBAWAssistantTextMessage(BaseModel):
 	role: str = 'assistant'
 	type: str = 'message'
 	modality: str = 'text'
+	created_timestamp: Optional[str]
 
+#sbaw.function_call
 class SBAWFunctionCall(BaseModel):
 	id: str
 	call_id: str
@@ -26,8 +33,10 @@ class SBAWFunctionCall(BaseModel):
 	arguments: Dict
 	role: str = 'assistant'
 	type: str = 'function_call'
+	created_timestamp: Optional[str]
 	# TODO: serialize method for arguments to JSON
 
+#sbaw.function_result
 class SBAWFunctionResult(BaseModel):
 	id: str
 	call_id: str
@@ -35,3 +44,4 @@ class SBAWFunctionResult(BaseModel):
 	result: Any
 	role: str = 'system'
 	type: str = 'function_result'
+	created_timestamp: Optional[str]

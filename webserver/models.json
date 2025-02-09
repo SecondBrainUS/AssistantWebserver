@@ -7,6 +7,14 @@
 			"display_name": "OpenAI GPT-4o Realtime Preview",
 			"full_name": "OpenAI GPT-4o Realtime Preview 2024-12-17",
 			"description": "GPT-4o Realtime Preview"
+		},
+		{
+			"model_id": "aisuite.openai:gpt-4o",
+			"model_api_source": "aisuite",
+			"provider": "OpenAI",
+			"display_name": "OpenAI GPT-4o",
+			"full_name": "OpenAI GPT-4o",
+			"description": "GPT-4o"
 		}
 	]
 }

@@ -17,7 +17,13 @@ class AiSuiteRoom(AssistantRoom):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def initializeAiSuiteAssistant(self):
+    async def initialize(self):
+        logger.info('[AiSuiteRoom] Initializing....')
+        await self.initializeAiSuiteAssistant()
+        logger.info('[AiSuiteRoom] Initialized')
+        return True
+
+    async def initializeAiSuiteAssistant(self):
         """Initialize AISuite with configuration and tools."""
         try:
             config = {}
@@ -42,10 +48,10 @@ class AiSuiteRoom(AssistantRoom):
             ai_suite.set_tool_function_map(self.tool_map)
             ai_suite.set_tool_chain_config(allow_chaining=True, max_turns=8)
 
-            self.api.add_event_callback('tool_call', self._handle_function_call)
-            self.api.add_event_callback('tool_result', self._handle_function_result)
-            self.api.add_event_callback('final_response', self._handle_aisuite_response)
-            self.api.add_event_callback('error', self._handle_aisuite_error)
+            ai_suite.add_event_callback('tool_call', self._handle_function_call)
+            ai_suite.add_event_callback('tool_result', self._handle_function_result)
+            ai_suite.add_event_callback('final_response', self._handle_aisuite_response)
+            ai_suite.add_event_callback('error', self._handle_aisuite_error)
 
             self.api = ai_suite
               
@@ -81,7 +87,7 @@ class AiSuiteRoom(AssistantRoom):
 
     async def send_message_to_ai(self, message: dict, sid: str, userid: str, model_id: str) -> None:
         """Send a message to the AISuite API."""
-        model_id = model_id.replace("aisuite", "", 1)
+        model_id = model_id.replace("aisuite.", "", 1)
         full_response = await self.api.generate_response([message], model_id) # Will use event callbacks for streaming responses
         pass
 
