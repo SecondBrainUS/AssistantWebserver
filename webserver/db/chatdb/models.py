@@ -22,7 +22,6 @@ class DBMessageBase(BaseModel):
     created_timestamp: datetime
     role: Literal["user", "assistant", "system"]
     type: Literal["message", "function_call", "function_result"]
-    usage: Optional[Dict[str, Any]] = None
 
     model_config = {
         'protected_namespaces': (),

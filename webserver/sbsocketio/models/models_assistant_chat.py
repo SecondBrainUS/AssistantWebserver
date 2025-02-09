@@ -13,7 +13,6 @@ class SBAWUserTextMessage(BaseModel):
 	modality: str = 'text'
 	created_timestamp: Optional[str]
 
-#sbaw.text_message.assistant
 class SBAWAssistantTextMessage(BaseModel):
 	id: str
 	content: str
@@ -25,7 +24,6 @@ class SBAWAssistantTextMessage(BaseModel):
 	modality: str = 'text'
 	created_timestamp: Optional[str]
 
-#sbaw.function_call
 class SBAWFunctionCall(BaseModel):
 	id: str
 	call_id: str
@@ -36,7 +34,6 @@ class SBAWFunctionCall(BaseModel):
 	created_timestamp: Optional[str]
 	# TODO: serialize method for arguments to JSON
 
-#sbaw.function_result
 class SBAWFunctionResult(BaseModel):
 	id: str
 	call_id: str

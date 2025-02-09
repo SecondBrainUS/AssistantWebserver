@@ -9,7 +9,7 @@ from webserver.config import settings
 from webserver.ai.aw_aisuite import AiSuiteAsstTextMessage, AiSuiteAsstFunctionCall, AiSuiteAsstFunctionResult, AiSuiteAssistant
 from webserver.db.chatdb.db import mongodb_client
 from webserver.sbsocketio.connection_manager import ConnectionManager
-from webserver.db.chatdb.models import DBMessageText, DBMessageFunctionCall, DBMessageFunctionResult
+from webserver.db.chatdb.models import DBMessageText, DBMessageFunctionCall, DBMessageFunctionResult, DBMessageAssistantText
 from webserver.sbsocketio.models.models_assistant_chat import SBAWUserTextMessage, SBAWAssistantTextMessage, SBAWFunctionCall, SBAWFunctionResult
 from webserver.sbsocketio.assistant_room import AssistantRoom
 logger = logging.getLogger(__name__)
@@ -119,11 +119,10 @@ class AiSuiteRoom(AssistantRoom):
             modality=message_item["modality"],
             created_timestamp=created_timestamp
         )
-        self.save_message(db_message.model_dump())
-
+        await self.save_message(db_message.model_dump())
 
         # Broadcast message to all users in the room
-        user_message = SBAWUserTextMessage(
+        user_text_message = SBAWUserTextMessage(
             id=message_id,
             content=message_item["content"],
             model_id=model_id,
@@ -132,32 +131,140 @@ class AiSuiteRoom(AssistantRoom):
             modality="text",
             created_timestamp=created_timestamp.isoformat()
         )
+
+        message_event = {
+            "type": "sbaw.text_message.user",
+            "data": user_text_message.model_dump()
+        }
+
         logger.info(f"[SEND MESSAGE] Broadcasting message to all users in the room {self.room_id}")
-        await self.broadcast(f"receive_message {self.room_id}", sid, user_message.model_dump())
+        await self.broadcast(f"receive_message {self.room_id}", sid, message_event)
 
         # Send message to AI model
         message_aisuite = { "role": "user", "content": message_item['content'] }
-        self.send_message_to_ai(message_aisuite, sid, userid, model_id)
+        await self.send_message_to_ai(message_aisuite, sid, userid, model_id)
 
     async def send_message_to_ai(self, message: dict, sid: str, userid: str, model_id: str) -> None:
         """Send a message to the AISuite API."""
         model_id = model_id.replace("aisuite.", "", 1)
-        full_response = await self.api.generate_response([message], model_id) # Will use event callbacks for streaming responses
+        
+        # Uses event callbacks for streaming the responses
+        full_response = await self.api.generate_response([message], model_id)
 
     async def _handle_function_call(self, function_call: AiSuiteAsstFunctionCall) -> None:
-        # SBAWFunctionCall
-        # DBMessageFunctionCall
-        pass
+        logger.info(f"[HANDLE FUNCTION CALL] {function_call}")
+
+        message_id = str(uuid.uuid4())
+        created_timestamp = datetime.now()
+
+        # Store message in DB
+        db_message = DBMessageFunctionCall(
+            message_id=message_id,
+            chat_id=self.chat_id,
+            model_id=function_call.model_id,
+            model_api_source="aisuite",
+            usage=function_call.token_usage,
+            name=function_call.name,
+            arguments=function_call.arguments,
+            call_id=function_call.call_id,
+            role="assistant",
+            type="function_call",
+            created_timestamp=created_timestamp
+        )
+        await self.save_message(db_message.model_dump())
+
+        # Broadcast message to all users in the room
+        assistant_message = SBAWFunctionCall(
+            id=message_id,
+            call_id=function_call.call_id,
+            name=function_call.name,
+            arguments=function_call.arguments,
+            created_timestamp=created_timestamp.isoformat()
+        )
+
+        message_event = {
+            "type": "sbaw.function_call",
+            "data": assistant_message.model_dump()
+        }
+        logger.info(f"[HANDLE FUNCTION CALL] Broadcasting message to all users in the room {self.room_id}")
+        await self.broadcast(f"receive_message {self.room_id}", None, message_event)
 
     async def _handle_function_result(self, function_result: AiSuiteAsstFunctionResult) -> None:
-        # SBAWFunctionResult
-        # DBMessageFunctionResult
-        pass
+        logger.info(f"[HANDLE FUNCTION RESULT] {function_result}")
+
+        message_id = str(uuid.uuid4())
+        created_timestamp = datetime.now()
+
+        # Store message in DB
+        db_message = DBMessageFunctionResult(
+            message_id=message_id,
+            chat_id=self.chat_id,
+            model_id=function_result.model_id,
+            model_api_source="aisuite",
+            call_id=function_result.call_id,
+            name=function_result.name,
+            arguments=function_result.arguments,
+            result=function_result.result,
+            role="assistant",
+            type="function_result",
+            created_timestamp=created_timestamp
+        )
+        await self.save_message(db_message.model_dump())
+
+        # Broadcast message to all users in the room
+        assistant_message = SBAWFunctionResult(
+            id=message_id,
+            call_id=function_result.call_id,
+            name=function_result.name,
+            result=function_result.result,
+            created_timestamp=created_timestamp.isoformat()
+        )
+
+        message_event = {
+            "type": "sbaw.function_result",
+            "data": assistant_message.model_dump()
+        }
+        logger.info(f"[HANDLE FUNCTION RESULT] Broadcasting message to all users in the room {self.room_id}")
+        await self.broadcast(f"receive_message {self.room_id}", None, message_event)
+
 
     async def _handle_aisuite_response(self, response: AiSuiteAsstTextMessage) -> None:
-        # SBAWAssistantTextMessage, 
-        # DBMessageAssistantText, 
-        pass
+        logger.info(f"[HANDLE AISUITE RESPONSE] {response}")
+
+        message_id = str(uuid.uuid4())
+        created_timestamp = datetime.now()
+
+        # Store message in DB
+        db_message = DBMessageAssistantText(
+            message_id=message_id,
+            chat_id=self.chat_id,
+            model_id=response.model_id,
+            model_api_source="aisuite",
+            content=response.content,
+            role="assistant",
+            type="message",
+            modality="text",
+            usage=response.token_usage,
+            created_timestamp=created_timestamp
+        )
+        await self.save_message(db_message.model_dump())
+
+        # Broadcast message to all users in the room
+        assistant_message = SBAWAssistantTextMessage(
+            id=message_id,
+            content=response.content,
+            model_id=response.model_id,
+            token_usage=response.token_usage,
+            stop_reason=response.stop_reason,
+            created_timestamp=created_timestamp.isoformat()
+        )
+
+        message_event = {
+            "type": "sbaw.text_message.assistant",
+            "data": assistant_message.model_dump()
+        }
+        logger.info(f"[HANDLE AISUITE RESPONSE] Broadcasting message to all users in the room {self.room_id}")
+        await self.broadcast(f"receive_message {self.room_id}", None, message_event)
 
     async def _handle_aisuite_error(self, error: dict) -> None:
         pass

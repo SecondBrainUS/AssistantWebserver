@@ -9,17 +9,22 @@ import aisuite
 
 logger = logging.getLogger(__name__)
 
-class AiSuiteAsstTextMessage(BaseModel):
+class AiSuiteAsstBase(BaseModel):
+    model_id: str
+    model_api_source: str = "aisuite"
+
+class AiSuiteAsstTextMessage(AiSuiteAsstBase):
     content: str
     token_usage: Optional[Dict[str, int]]
     stop_reason: Optional[str]
 
-class AiSuiteAsstFunctionCall(BaseModel):
+class AiSuiteAsstFunctionCall(AiSuiteAsstBase):
     name: str
     arguments: Any
     call_id: str
+    token_usage: Optional[Dict[str, int]]
 
-class AiSuiteAsstFunctionResult(BaseModel):
+class AiSuiteAsstFunctionResult(AiSuiteAsstBase):
     call_id: str
     name: str
     arguments: Any
@@ -129,12 +134,14 @@ class AiSuiteAssistant:
             event_type: Type of event ("tool_call", "tool_result", or "final_response")
             callback: Async function to call when event occurs
         """
+        logger.info(f"Adding event callback for {event_type}")
         if event_type not in self._event_callbacks:
             raise ValueError(f"Unknown event type: {event_type}")
         self._event_callbacks[event_type].add(callback)
 
     async def _trigger_event(self, event_type: str, data: Any):
         """Trigger all callbacks for a given event type"""
+        logger.info(f"Triggering event {event_type} with data {data}")
         for callback in self._event_callbacks[event_type]:
             try:
                 if asyncio.iscoroutinefunction(callback):
@@ -189,13 +196,25 @@ class AiSuiteAssistant:
                 tools=tools,
                 temperature=temperature
             )
+
+            logger.info(f"[AISUITE] [GENERATE RESPONSE] Response: {response}")
             
             tool_calls = []
             tool_results = []
             final_content = response.choices[0].message.content
+            token_usage = None
+            if hasattr(response, 'usage'):
+                token_usage = {
+                    'prompt_tokens': response.usage.prompt_tokens,
+                    'completion_tokens': response.usage.completion_tokens,
+                    'total_tokens': response.usage.total_tokens
+                }
+
+            final_response = response
             
             # Handle tool calls if present
             if response.choices[0].message.tool_calls:
+
                 while (self._allow_tool_chaining and 
                        self._tool_chain_counter < self._max_tool_chain_turns):
                     
@@ -205,12 +224,15 @@ class AiSuiteAssistant:
                     # Process tool calls
                     for tool_call_data in response.choices[0].message.tool_calls:
                         tool_call = AiSuiteAsstFunctionCall(
+                            model_id=model,
                             name=tool_call_data.function.name,
                             arguments=json.loads(tool_call_data.function.arguments),
                             call_id=tool_call_data.id
                         )
 
                         current_tool_calls.append(tool_call)
+
+                        logger.info(f"[AISUITE] [GENERATE RESPONSE] Tool call: {tool_call}")
                         
                         # Trigger tool call event
                         await self._trigger_event("tool_call", tool_call)
@@ -219,12 +241,14 @@ class AiSuiteAssistant:
                         try:
                             result = await self._execute_tool(tool_call)
                             tool_result = AiSuiteAsstFunctionResult(
+                                model_id=model,
                                 call_id=tool_call.call_id,
                                 name=tool_call.name,
                                 arguments=tool_call.arguments,
                                 result=result
                             )
 
+                            logger.info(f"[AISUITE] [GENERATE RESPONSE] Tool result: {tool_result}")
                             tool_results.append(tool_result)
                             
                             # Trigger tool result event
@@ -248,6 +272,7 @@ class AiSuiteAssistant:
                         except Exception as e:
                             logger.error(f"Tool execution error for {tool_call.name}: {e}")
                             tool_result = AiSuiteAsstFunctionResult(
+                                model_id=model,
                                 id=str(uuid.uuid4()),
                                 call_id=tool_call.call_id,
                                 name=tool_call.name,
@@ -282,16 +307,20 @@ class AiSuiteAssistant:
                     
                     # Trigger final response event when no more tool calls
                     if not final_response.choices[0].message.tool_calls:
-                        # Create text message for final response
-                        final_message: AiSuiteAsstTextMessage = AiSuiteAsstTextMessage(
-                            content=final_content,
-                            token_usage=token_usage,
-                            stop_reason=getattr(final_response.choices[0], 'finish_reason', None)
-                        )
-                        await self._trigger_event("final_response", final_message)
                         break
-                    
+
                     response = final_response
+
+            # Create text message for final response
+            final_message: AiSuiteAsstTextMessage = AiSuiteAsstTextMessage(
+                model_id=model,
+                content=final_content,
+                token_usage=token_usage,
+                stop_reason=getattr(final_response.choices[0], 'finish_reason', None)
+            )
+            await self._trigger_event("final_response", final_message)
+
+            logger.info(f"[AISUITE] [GENERATE RESPONSE] Final response: {final_content}")
 
             return AiSuiteResponse(
                 id=response_id,
@@ -299,7 +328,7 @@ class AiSuiteAssistant:
                 tool_calls=tool_calls,
                 tool_results=tool_results,
                 token_usage=token_usage,
-                stop_reason=getattr(response.choices[0], 'finish_reason', None),
+                stop_reason=getattr(final_response.choices[0], 'finish_reason', None),
                 conversation_messages=conversation
             )
             
