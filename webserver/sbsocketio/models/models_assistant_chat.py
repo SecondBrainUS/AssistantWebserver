@@ -3,7 +3,7 @@ from pydantic import BaseModel
 
 # TODO: use both a client_message_id and then an id from the server
 
-#sbaw.text_message.user
+#sbaw.text_message.user or incoming
 class SBAWUserTextMessage(BaseModel):
 	id: str
 	content: str

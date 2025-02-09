@@ -35,6 +35,9 @@ class DBMessageText(DBMessageBase):
     content: str
     modality: Literal["text", "audio"]
 
+class DBMessageAssistantText(DBMessageText):
+    usage: Optional[Dict[str, Any]] = None
+
 class DBMessageFunctionCall(DBMessageBase):
     name: str
     arguments: str
