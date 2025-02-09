@@ -227,7 +227,8 @@ class AiSuiteAssistant:
                             model_id=model,
                             name=tool_call_data.function.name,
                             arguments=json.loads(tool_call_data.function.arguments),
-                            call_id=tool_call_data.id
+                            call_id=tool_call_data.id,
+                            token_usage=token_usage
                         )
 
                         current_tool_calls.append(tool_call)
