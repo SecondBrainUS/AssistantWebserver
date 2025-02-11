@@ -270,7 +270,8 @@ class OpenAiRealTimeRoom(AssistantRoom):
 
     async def _handle_openai_rt_generic(self, event: dict) -> None:
         """Handle generic OpenAI events"""
-        logger.info(f"[OPENAI EVENT] [GENERIC] Received OpenAI event in room {self.room_id}: {event}")
+        if (event.get("type") != "response.audio.delta"):
+            logger.info(f"[OPENAI EVENT] [GENERIC] Received OpenAI event in room {self.room_id}: {event}")
         await self.broadcast(f"receive_message {self.room_id}", None, event)
 
     async def _handle_openai_error(
