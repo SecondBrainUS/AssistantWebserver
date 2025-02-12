@@ -39,6 +39,134 @@
 			"display_name": "DeepSeek R1 Distill Llama 70b",
 			"full_name": "DeepSeek R1 Distill Llama 70b",
 			"description": "DeepSeek R1 Distill Llama 70b"
+		},
+		{
+			"model_id": "aisuite.groq:allam-2-7b",
+			"model_api_source": "aisuite",
+			"provider": "Groq",
+			"display_name": "Allam 2 7B",
+			"full_name": "Allam 2 7B",
+			"description": "Allam 2 7B"
+		},
+		{
+			"model_id": "aisuite.groq:deepseek-r1-distill-llama-70b-specdec",
+			"model_api_source": "aisuite",
+			"provider": "DeepSeek",
+			"display_name": "DeepSeek R1 Distill Llama 70B SpecDec",
+			"full_name": "DeepSeek R1 Distill Llama 70B SpecDec",
+			"description": "DeepSeek R1 Distill Llama 70B SpecDec"
+		},
+		{
+			"model_id": "aisuite.groq:deepseek-r1-distill-qwen-32b",
+			"model_api_source": "aisuite",
+			"provider": "DeepSeek",
+			"display_name": "DeepSeek R1 Distill Qwen 32B",
+			"full_name": "DeepSeek R1 Distill Qwen 32B",
+			"description": "DeepSeek R1 Distill Qwen 32B"
+		},
+		{
+			"model_id": "aisuite.groq:gemma2-9b-it",
+			"model_api_source": "aisuite",
+			"provider": "Google",
+			"display_name": "Gemma 2 9B IT",
+			"full_name": "Gemma 2 9B IT",
+			"description": "Gemma 2 9B IT"
+		},
+		{
+			"model_id": "aisuite.groq:llama-3.1-8b-instant",
+			"model_api_source": "aisuite",
+			"provider": "Meta",
+			"display_name": "Llama 3.1 8B Instant",
+			"full_name": "Llama 3.1 8B Instant",
+			"description": "Llama 3.1 8B Instant"
+		},
+		{
+			"model_id": "aisuite.groq:llama-3.2-1b-vision-preview",
+			"model_api_source": "aisuite",
+			"provider": "Meta",
+			"display_name": "Llama 3.2 1B Vision Preview",
+			"full_name": "Llama 3.2 1B Vision Preview",
+			"description": "Llama 3.2 1B Vision Preview"
+		},
+		{
+			"model_id": "aisuite.groq:llama-3.2-1b-preview",
+			"model_api_source": "aisuite",
+			"provider": "Meta",
+			"display_name": "Llama 3.2 1B Preview",
+			"full_name": "Llama 3.2 1B Preview",
+			"description": "Llama 3.2 1B Preview"
+		},
+		{
+			"model_id": "aisuite.groq:llama-3.2-3b-preview",
+			"model_api_source": "aisuite",
+			"provider": "Meta",
+			"display_name": "Llama 3.2 3B Preview",
+			"full_name": "Llama 3.2 3B Preview",
+			"description": "Llama 3.2 3B Preview"
+		},
+		{
+			"model_id": "aisuite.groq:llama-3.2-90b-vision-preview",
+			"model_api_source": "aisuite",
+			"provider": "Meta",
+			"display_name": "Llama 3.2 90B Vision Preview",
+			"full_name": "Llama 3.2 90B Vision Preview",
+			"description": "Llama 3.2 90B Vision Preview"
+		},
+		{
+			"model_id": "aisuite.groq:llama-3.3-70b-specdec",
+			"model_api_source": "aisuite",
+			"provider": "Meta",
+			"display_name": "Llama 3.3 70B SpecDec",
+			"full_name": "Llama 3.3 70B SpecDec",
+			"description": "Llama 3.3 70B SpecDec"
+		},
+		{
+			"model_id": "aisuite.groq:llama-3.3-70b-versatile",
+			"model_api_source": "aisuite",
+			"provider": "Meta",
+			"display_name": "Llama 3.3 70B Versatile",
+			"full_name": "Llama 3.3 70B Versatile",
+			"description": "Llama 3.3 70B Versatile"
+		},
+		{
+			"model_id": "aisuite.groq:llama-guard-3-8b",
+			"model_api_source": "aisuite",
+			"provider": "Meta",
+			"display_name": "Llama Guard 3 8B",
+			"full_name": "Llama Guard 3 8B",
+			"description": "Llama Guard 3 8B"
+		},
+		{
+			"model_id": "aisuite.groq:llama3-70b-8192",
+			"model_api_source": "aisuite",
+			"provider": "Meta",
+			"display_name": "Llama 3 70B 8192",
+			"full_name": "Llama 3 70B 8192",
+			"description": "Llama 3 70B 8192"
+		},
+		{
+			"model_id": "aisuite.groq:llama3-8b-8192",
+			"model_api_source": "aisuite",
+			"provider": "Meta",
+			"display_name": "Llama 3 8B 8192",
+			"full_name": "Llama 3 8B 8192",
+			"description": "Llama 3 8B 8192"
+		},
+		{
+			"model_id": "aisuite.groq:mixtral-8x7b-32768",
+			"model_api_source": "aisuite",
+			"provider": "Mistral",
+			"display_name": "Mixtral 8x7B 32768",
+			"full_name": "Mixtral 8x7B 32768",
+			"description": "Mixtral 8x7B 32768"
+		},
+		{
+			"model_id": "aisuite.groq:qwen-2.5-32b",
+			"model_api_source": "aisuite",
+			"provider": "Qwen",
+			"display_name": "Qwen 2.5 32B",
+			"full_name": "Qwen 2.5 32B",
+			"description": "Qwen 2.5 32B"
 		}
 	]
 }

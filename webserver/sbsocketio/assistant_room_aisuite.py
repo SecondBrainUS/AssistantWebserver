@@ -21,6 +21,8 @@ class AiSuiteRoom(AssistantRoom):
     async def initialize(self):
         logger.info('[AiSuiteRoom] Initializing....')
         await self.initializeAiSuiteAssistant()
+        # Load conversation history after initializing the assistant
+        await self.initialize_chat()
         logger.info('[AiSuiteRoom] Initialized')
         return True
 
@@ -55,10 +57,32 @@ class AiSuiteRoom(AssistantRoom):
             ai_suite.add_event_callback('error', self._handle_aisuite_error)
 
             self.api = ai_suite
+
+            self.conversation_history = []
               
         except Exception as e:
             logger.error(f"Initialization error: {str(e)}", exc_info=True)
             raise e
+
+    async def initialize_chat(self):
+        """Load conversation history from MongoDB."""
+        if not self.chat_id:
+            return
+
+        # Load last 10 messages into conversation context
+        messages_collection = mongodb_client.db["messages"]
+        messages = await messages_collection.find(
+            {"chat_id": self.chat_id}
+        ).sort("created_timestamp", -1).limit(10).to_list(10)
+        
+        # Convert messages to format expected by AISuite
+        self.conversation_history = []
+        for msg in reversed(messages):  # Reverse to get chronological order
+            if msg.get("type") == "message":
+                self.conversation_history.append({
+                    "role": msg.get("role"),
+                    "content": msg.get("content")
+                })
 
     async def handle_send_message(self, message: dict, sid: str, model_id: str) -> None:
         """Handle sending a message."""
@@ -75,23 +99,6 @@ class AiSuiteRoom(AssistantRoom):
             return
         
         logger.info(f"[SEND MESSAGE] Data: {message}")
-        """
-        {
-            'type': 'sbaw.incoming.text_message.user', 
-            'data': 
-            {
-            'item': 
-                {
-                'id': '1739122253019', 
-                'type': 'message',
-                'role': 'user', 
-                'model_id': 'aisuite.openai:gpt-4o',
-                'modality': 'text', 
-                'content': 'asd\n'
-                }
-                'id': '1739122253019'
-             }
-        """
 
         message_item = message["data"]["item"]
 
@@ -142,20 +149,43 @@ class AiSuiteRoom(AssistantRoom):
 
         # Send message to AI model
         message_aisuite = { "role": "user", "content": message_item['content'] }
-        await self.send_message_to_ai(message_aisuite, sid, userid, model_id)
+        try:
+            await self.send_message_to_ai(message_aisuite, sid, userid, model_id)
+        except Exception as e:
+            logger.error(f"[SEND MESSAGE] Error sending message to AI: {e}")
+            await self.sio.emit(f'message_error {client_message_id}', 
+                {'error': str(e)}, 
+                room=sid, 
+                namespace=self.namespace)
 
     async def send_message_to_ai(self, message: dict, sid: str, userid: str, model_id: str) -> None:
         """Send a message to the AISuite API."""
         model_id = model_id.replace("aisuite.", "", 1)
         
+        self.conversation_history.append(message)
+        
         # Uses event callbacks for streaming the responses
-        full_response = await self.api.generate_response([message], model_id)
+        full_response = await self.api.generate_response(self.conversation_history, model_id)
 
     async def _handle_function_call(self, function_call: AiSuiteAsstFunctionCall) -> None:
         logger.info(f"[HANDLE FUNCTION CALL] {function_call}")
 
         message_id = str(uuid.uuid4())
         created_timestamp = datetime.now()
+
+        # Add function call to conversation history
+        self.conversation_history.append({
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{
+                "id": function_call.call_id,
+                "type": "function",
+                "function": {
+                    "name": function_call.name,
+                    "arguments": json.dumps(function_call.arguments)
+                }
+            }]
+        })
 
         # Store message in DB
         db_message = DBMessageFunctionCall(
@@ -195,6 +225,17 @@ class AiSuiteRoom(AssistantRoom):
         message_id = str(uuid.uuid4())
         created_timestamp = datetime.now()
 
+        # Add function result to conversation history
+        self.conversation_history.append({
+            "role": "tool",
+            "tool_call_id": function_result.call_id,
+            "name": function_result.name,
+            "content": json.dumps({
+                "result": function_result.result,
+                "arguments": function_result.arguments
+            })
+        })
+
         # Store message in DB
         db_message = DBMessageFunctionResult(
             message_id=message_id,
@@ -227,12 +268,17 @@ class AiSuiteRoom(AssistantRoom):
         logger.info(f"[HANDLE FUNCTION RESULT] Broadcasting message to all users in the room {self.room_id}")
         await self.broadcast(f"receive_message {self.room_id}", None, message_event)
 
-
     async def _handle_aisuite_response(self, response: AiSuiteAsstTextMessage) -> None:
         logger.info(f"[HANDLE AISUITE RESPONSE] {response}")
 
         message_id = str(uuid.uuid4())
         created_timestamp = datetime.now()
+
+        # Add assistant response to conversation history
+        self.conversation_history.append({
+            "role": "assistant",
+            "content": response.content
+        })
 
         # Store message in DB
         db_message = DBMessageAssistantText(
