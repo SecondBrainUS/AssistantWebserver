@@ -96,7 +96,7 @@ class AiSuiteRoom(AssistantRoom):
         message_item = message["data"]["item"]
 
         # Notify sender that message was received
-        client_message_id = message_item.get("id")
+        client_message_id = message.get("id")
         logger.info(f"[SEND MESSAGE] Emitting message_sent event for client message id {client_message_id}")
         await self.sio.emit(f'message_sent {client_message_id}', 
                 {'success': True}, 

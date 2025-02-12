@@ -15,6 +15,30 @@
 			"display_name": "OpenAI GPT-4o",
 			"full_name": "OpenAI GPT-4o",
 			"description": "GPT-4o"
+		},
+		{
+			"model_id": "aisuite.anthropic:claude-3-5-sonnet-20241022",
+			"model_api_source": "aisuite",
+			"provider": "Anthropic",
+			"display_name": "Anthropic Claude 3.5 Sonnet",
+			"full_name": "Anthropic Claude 3.5 Sonnet",
+			"description": "Claude 3.5 Sonnet"
+		},
+		{
+			"model_id": "aisuite.anthropic:claude-3-haiku-20240307",
+			"model_api_source": "aisuite",
+			"provider": "Anthropic",
+			"display_name": "Anthropic Claude 3 Haiku",
+			"full_name": "Anthropic Claude 3 Haiku",
+			"description": "Claude 3 Haiku"
+		},
+		{
+			"model_id": "aisuite.groq:DeepSeek-R1-Distill-Llama-70b",
+			"model_api_source": "aisuite",
+			"provider": "DeepSeek",
+			"display_name": "DeepSeek R1 Distill Llama 70b",
+			"full_name": "DeepSeek R1 Distill Llama 70b",
+			"description": "DeepSeek R1 Distill Llama 70b"
 		}
 	]
 }

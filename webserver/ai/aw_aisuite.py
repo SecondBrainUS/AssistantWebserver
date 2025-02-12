@@ -15,14 +15,14 @@ class AiSuiteAsstBase(BaseModel):
 
 class AiSuiteAsstTextMessage(AiSuiteAsstBase):
     content: str
-    token_usage: Optional[Dict[str, int]]
+    token_usage: Optional[Dict[str, Optional[int]]]
     stop_reason: Optional[str]
 
 class AiSuiteAsstFunctionCall(AiSuiteAsstBase):
     name: str
     arguments: Any
     call_id: str
-    token_usage: Optional[Dict[str, int]]
+    token_usage: Optional[Dict[str, Optional[int]]]
 
 class AiSuiteAsstFunctionResult(AiSuiteAsstBase):
     call_id: str
@@ -36,7 +36,7 @@ class AiSuiteResponse(BaseModel):
     content: str
     tool_calls: List[AiSuiteAsstFunctionCall]
     tool_results: List[AiSuiteAsstFunctionResult]
-    token_usage: Optional[Dict[str, int]]
+    token_usage: Optional[Dict[str, Optional[int]]]
     stop_reason: Optional[str]
 
 class AiSuiteAssistant:
@@ -77,6 +77,7 @@ class AiSuiteAssistant:
         self._allow_tool_chaining = allow_chaining
         self._max_tool_chain_turns = max_turns
         
+    # anthropic.BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': "tools.0: Input tag 'function' found using 'type' does not match any of the expected tags: 'bash_20250124', 'custom', 'text_editor_20250124'"}}
     def _get_tools_config(self) -> List[Dict]:
         """Convert tool map to aisuite tools format"""
         if not self._tool_function_map:
@@ -203,12 +204,16 @@ class AiSuiteAssistant:
             tool_results = []
             final_content = response.choices[0].message.content
             token_usage = None
-            if hasattr(response, 'usage'):
-                token_usage = {
-                    'prompt_tokens': response.usage.prompt_tokens,
-                    'completion_tokens': response.usage.completion_tokens,
-                    'total_tokens': response.usage.total_tokens
-                }
+            if hasattr(response, 'usage') and response.usage:
+                try:
+                    token_usage = {
+                        'prompt_tokens': getattr(response.usage, 'prompt_tokens', None),
+                        'completion_tokens': getattr(response.usage, 'completion_tokens', None),
+                        'total_tokens': getattr(response.usage, 'total_tokens', None)
+                    }
+                except AttributeError:
+                    logger.warning("Could not access token usage attributes")
+                    token_usage = None
 
             final_response = response
             
@@ -299,12 +304,16 @@ class AiSuiteAssistant:
                     
                     # Construct token usage if available
                     token_usage = None
-                    if hasattr(final_response, 'usage'):
-                        token_usage = {
-                            'prompt_tokens': final_response.usage.prompt_tokens,
-                            'completion_tokens': final_response.usage.completion_tokens,
-                            'total_tokens': final_response.usage.total_tokens
-                        }
+                    if hasattr(final_response, 'usage') and final_response.usage:
+                        try:
+                            token_usage = {
+                                'prompt_tokens': getattr(final_response.usage, 'prompt_tokens', None),
+                                'completion_tokens': getattr(final_response.usage, 'completion_tokens', None),
+                                'total_tokens': getattr(final_response.usage, 'total_tokens', None)
+                            }
+                        except AttributeError:
+                            logger.warning("Could not access token usage attributes in final response")
+                            token_usage = None
                     
                     # Trigger final response event when no more tool calls
                     if not final_response.choices[0].message.tool_calls:

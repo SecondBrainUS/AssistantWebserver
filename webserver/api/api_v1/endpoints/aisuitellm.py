@@ -31,15 +31,15 @@ def initialize_ai_suite() -> AiSuiteAssistant:
             
         if settings.ANTHROPIC_API_KEY:
             config["anthropic"] = {"api_key": settings.ANTHROPIC_API_KEY}
+                
+        if settings.GROQ_API_KEY:
+            config["groq"] = {"api_key": settings.GROQ_API_KEY}
             
         if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
             config["aws"] = {
                 "access_key_id": settings.AWS_ACCESS_KEY_ID,
                 "secret_access_key": settings.AWS_SECRET_ACCESS_KEY
             }
-    
-        if settings.GROQ_API_KEY:
-            config["groq"] = {"api_key": settings.GROQ_API_KEY}
         
         ai_suite = AiSuiteAssistant(config=config)
         
