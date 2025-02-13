@@ -6,7 +6,8 @@
 			"provider": "OpenAI",
 			"display_name": "OpenAI GPT-4o Realtime Preview",
 			"full_name": "OpenAI GPT-4o Realtime Preview 2024-12-17",
-			"description": "GPT-4o Realtime Preview"
+			"description": "GPT-4o Realtime Preview",
+			"is_favorite": true
 		},
 		{
 			"model_id": "aisuite.openai:gpt-4o",
@@ -14,7 +15,8 @@
 			"provider": "OpenAI",
 			"display_name": "OpenAI GPT-4o",
 			"full_name": "OpenAI GPT-4o",
-			"description": "GPT-4o"
+			"description": "GPT-4o",
+			"is_favorite": true
 		},
 		{
 			"model_id": "aisuite.anthropic:claude-3-5-sonnet-20241022",
@@ -22,7 +24,8 @@
 			"provider": "Anthropic",
 			"display_name": "Anthropic Claude 3.5 Sonnet",
 			"full_name": "Anthropic Claude 3.5 Sonnet",
-			"description": "Claude 3.5 Sonnet"
+			"description": "Claude 3.5 Sonnet",
+			"is_favorite": true
 		},
 		{
 			"model_id": "aisuite.anthropic:claude-3-haiku-20240307",
@@ -166,7 +169,8 @@
 			"provider": "XAI",
 			"display_name": "Grok 2 Latest",
 			"full_name": "Grok 2 Latest",
-			"description": "Grok 2 Latest"
+			"description": "Grok 2 Latest",
+			"is_favorite": true
 		}
 	]
 }
