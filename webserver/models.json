@@ -167,6 +167,14 @@
 			"display_name": "Qwen 2.5 32B",
 			"full_name": "Qwen 2.5 32B",
 			"description": "Qwen 2.5 32B"
+		},
+		{
+			"model_id": "aisuite.xai:grok-2-latest",
+			"model_api_source": "aisuite",
+			"provider": "XAI",
+			"display_name": "Grok 2 Latest",
+			"full_name": "Grok 2 Latest",
+			"description": "Grok 2 Latest"
 		}
 	]
 }

@@ -36,6 +36,9 @@ class AiSuiteRoom(AssistantRoom):
                 
             if settings.ANTHROPIC_API_KEY:
                 config["anthropic"] = {"api_key": settings.ANTHROPIC_API_KEY}
+
+            if settings.XAI_API_KEY:
+                config["xai"] = {"api_key": settings.XAI_API_KEY}
                 
             if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
                 config["aws"] = {

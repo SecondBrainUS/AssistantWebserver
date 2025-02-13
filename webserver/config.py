@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # Groq
     GROQ_API_KEY: Optional[str] = None
 
+    # XAI
+    XAI_API_KEY: Optional[str] = None
+
     MODELS_FILEPATH: str
 
     # Assistant Functions Integration Variable
