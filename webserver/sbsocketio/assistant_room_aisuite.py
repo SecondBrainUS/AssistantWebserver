@@ -160,6 +160,10 @@ class AiSuiteRoom(AssistantRoom):
                 {'error': str(e)}, 
                 room=sid, 
                 namespace=self.namespace)
+            await self.sio.emit(f'message_error', 
+                {'error': str(e), 'message_id': message_id, 'client_message_id': client_message_id}, 
+                room=self.room_id,
+                namespace=self.namespace)
 
     async def send_message_to_ai(self, message: dict, sid: str, userid: str, model_id: str) -> None:
         """Send a message to the AISuite API."""

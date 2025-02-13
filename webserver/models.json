@@ -41,14 +41,6 @@
 			"description": "DeepSeek R1 Distill Llama 70b"
 		},
 		{
-			"model_id": "aisuite.groq:allam-2-7b",
-			"model_api_source": "aisuite",
-			"provider": "Groq",
-			"display_name": "Allam 2 7B",
-			"full_name": "Allam 2 7B",
-			"description": "Allam 2 7B"
-		},
-		{
 			"model_id": "aisuite.groq:deepseek-r1-distill-llama-70b-specdec",
 			"model_api_source": "aisuite",
 			"provider": "DeepSeek",
