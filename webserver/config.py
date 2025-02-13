@@ -71,6 +71,12 @@ class Settings(BaseSettings):
     SENSOR_VALUES_METRICS: str
     SENSOR_VALUES_CRITTENDEN_GROUP_ID: str
 
+    # Spotify
+    SPOTIFY_CLIENT_ID: str
+    SPOTIFY_CLIENT_SECRET: str
+    SPOTIFY_REDIRECT_URI: str
+    SPOTIFY_SCOPES: str
+
     # User Whitelist
     USER_WHITELIST: Optional[str]
     

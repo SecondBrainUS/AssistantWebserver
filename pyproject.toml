@@ -32,6 +32,7 @@ prometheus-fastapi-instrumentator = "^7.0.2"
 aisuite = "^0.1.9"
 anthropic = "^0.45.2"
 groq = "^0.18.0"
+spotipy = "^2.25.0"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

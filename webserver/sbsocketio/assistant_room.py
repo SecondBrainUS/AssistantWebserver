@@ -8,6 +8,7 @@ from webserver.db.chatdb.db import mongodb_client
 from webserver.sbsocketio.connection_manager import ConnectionManager
 from webserver.tools.stocks import get_tool_function_map as get_stocks_tool_map
 from webserver.tools.perplexity import get_tool_function_map as get_perplexity_tool_map
+from webserver.tools.spotify import get_tool_function_map as get_spotify_tool_map
 logger = logging.getLogger(__name__)
 
 class AssistantRoom:
@@ -50,12 +51,14 @@ class AssistantRoom:
         assistant_tool_map = self.assistant_functions.get_tool_function_map()
         stocks_tool_map = get_stocks_tool_map()
         perplexity_tool_map = get_perplexity_tool_map()
+        spotify_tool_map = get_spotify_tool_map()
         
         # Merge all tool maps
         self.tool_map = {
             **assistant_tool_map, 
             **stocks_tool_map,
-            **perplexity_tool_map
+            **perplexity_tool_map,
+            **spotify_tool_map
         }
 
     async def _handle_message_error(

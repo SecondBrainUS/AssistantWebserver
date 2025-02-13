@@ -1,3 +1,9 @@
+
+does show acquired on spotify have a new episode?
+
+
+
+
 Goal:
     Multiple users, multiple sessions connected to a single AI agent
     Realtime/Websocket or RESTful/HTTP 
