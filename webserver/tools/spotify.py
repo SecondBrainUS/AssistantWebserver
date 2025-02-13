@@ -3,7 +3,7 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import os
 import logging
-
+import difflib
 
 logger = logging.getLogger(__name__)
 logger.info(f"SPOTIFY_REDIRECT_URI: {settings.SPOTIFY_REDIRECT_URI}")
@@ -24,9 +24,26 @@ def get_devices() -> list:
     return devices.get("devices", [])
 
 def get_show(show_name: str, market: str = "US") -> dict:
-    result = sp.search(q=show_name, type="show", market=market, limit=1)
+    result = sp.search(q=show_name, type="show", market=market, limit=25)
     shows = result.get("shows", {}).get("items", [])
-    return shows[0] if shows else None
+    
+    if not shows:
+        return None
+        
+    # Find the best matching show using fuzzy matching
+    best_show = None
+    best_score = 0
+    
+    for show in shows:
+        # Compare show name using sequence matcher
+        similarity = difflib.SequenceMatcher(None, show_name.lower(), show['name'].lower()).ratio()
+        
+        if similarity > best_score:
+            best_score = similarity
+            best_show = show
+    
+    # Only return the show if it has a reasonable match score (e.g., > 0.5)
+    return best_show if best_score > 0.5 else None
 
 def get_show_episodes(show_id: str, limit: int = 20, offset: int = 0, market: str = "US") -> dict:
     return sp.show_episodes(show_id, limit=limit, offset=offset, market=market)
@@ -56,7 +73,7 @@ def play_show_by_id(show_id: str, device_id: str, market: str = "US") -> None:
 def get_tool_function_map():
     """Get the tool function map for Spotify-related functions"""
     tool_function_map = {
-        "get_devices": {
+        "spotify_get_devices": {
             "function": get_devices,
             "description": "Get a list of available Spotify devices",
             "parameters": {
@@ -64,7 +81,7 @@ def get_tool_function_map():
                 "properties": {},  # No parameters needed
             },
         },
-        "get_show": {
+        "spotify_get_show": {
             "function": get_show,
             "description": "Search for a Spotify show by name",
             "parameters": {
@@ -83,7 +100,36 @@ def get_tool_function_map():
                 "required": ["show_name"],
             },
         },
-        "play_song_by_id": {
+        "spotify_get_show_episodes": {
+            "function": get_show_episodes,
+            "description": "Get episodes for a specific Spotify show",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "show_id": {
+                        "type": "string",
+                        "description": "Spotify ID of the show",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of episodes to return",
+                        "default": 20,
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "description": "Number of episodes to skip",
+                        "default": 0,
+                    },
+                    "market": {
+                        "type": "string",
+                        "description": "Market code (e.g., 'US')",
+                        "default": "US",
+                    },
+                },
+                "required": ["show_id"],
+            },
+        },
+        "spotify_play_song_by_id": {
             "function": play_song_by_id,
             "description": "Play a specific song on a Spotify device",
             "parameters": {
@@ -101,7 +147,7 @@ def get_tool_function_map():
                 "required": ["song_id", "device_id"],
             },
         },
-        "play_episode_by_id": {
+        "spotify_play_episode_by_id": {
             "function": play_episode_by_id,
             "description": "Play a specific podcast episode on a Spotify device",
             "parameters": {
@@ -119,7 +165,7 @@ def get_tool_function_map():
                 "required": ["episode_id", "device_id"],
             },
         },
-        "play_show_by_id": {
+        "spotify_play_show_by_id": {
             "function": play_show_by_id,
             "description": "Play the latest episode of a show on a Spotify device",
             "parameters": {
