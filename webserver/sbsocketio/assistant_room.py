@@ -9,6 +9,8 @@ from webserver.sbsocketio.connection_manager import ConnectionManager
 from webserver.tools.stocks import get_tool_function_map as get_stocks_tool_map
 from webserver.tools.perplexity import get_tool_function_map as get_perplexity_tool_map
 from webserver.tools.spotify import get_tool_function_map as get_spotify_tool_map
+from webserver.tools.tidal import get_tool_function_map as get_tidal_tool_map
+from webserver.tools.notion import get_tool_function_map as get_notion_tool_map
 logger = logging.getLogger(__name__)
 
 class AssistantRoom:
@@ -52,14 +54,37 @@ class AssistantRoom:
         stocks_tool_map = get_stocks_tool_map()
         perplexity_tool_map = get_perplexity_tool_map()
         spotify_tool_map = get_spotify_tool_map()
+        tidal_tool_map = get_tidal_tool_map()
+        notion_tool_map = get_notion_tool_map()
         
         # Merge all tool maps
         self.tool_map = {
             **assistant_tool_map, 
             **stocks_tool_map,
             **perplexity_tool_map,
-            **spotify_tool_map
+            **spotify_tool_map,
+            **tidal_tool_map,
+            **notion_tool_map
         }
+        
+        # Generate tool usage guide from system prompt descriptions
+        self.tool_usage_guide = self._generate_tool_usage_guide()
+
+    def _generate_tool_usage_guide(self) -> str:
+        """Generate a comprehensive guide for tool usage from system prompt descriptions"""
+        tool_descriptions = []
+        
+        for tool_name, tool_info in self.tool_map.items():
+            if "system_prompt_description" in tool_info:
+                tool_descriptions.append(f"- {tool_info['system_prompt_description']}")
+        
+        if not tool_descriptions:
+            return ""
+            
+        guide = "Tool Usage Guide:\n"
+        guide += "Here's how to effectively use the available tools:\n"
+        guide += "\n".join(tool_descriptions)
+        return guide
 
     async def _handle_message_error(
         self,

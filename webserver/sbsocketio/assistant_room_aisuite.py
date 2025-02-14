@@ -51,6 +51,10 @@ class AiSuiteRoom(AssistantRoom):
             
             ai_suite = AiSuiteAssistant(config=config)
             
+            # Add tool usage guide to system prompt if it exists
+            if self.tool_usage_guide:
+                self.set_system_prompt(self.tool_usage_guide)
+            
             ai_suite.set_tool_function_map(self.tool_map)
             ai_suite.set_tool_chain_config(allow_chaining=True, max_turns=8)
 
@@ -66,6 +70,24 @@ class AiSuiteRoom(AssistantRoom):
         except Exception as e:
             logger.error(f"Initialization error: {str(e)}", exc_info=True)
             raise e
+
+    def set_system_prompt(self, prompt: str) -> None:
+        """Set the system prompt and add it to conversation history."""
+        if hasattr(self, 'api'):
+            self.api.set_system_prompt(prompt)
+        
+        # Initialize conversation_history if it doesn't exist
+        if not hasattr(self, 'conversation_history'):
+            self.conversation_history = []
+            
+        # Remove any existing system messages
+        self.conversation_history = [msg for msg in self.conversation_history if msg.get('role') != 'system']
+        
+        # Add the new system prompt as the first message
+        self.conversation_history.insert(0, {
+            "role": "system",
+            "content": prompt
+        })
 
     async def initialize_chat(self):
         """Load conversation history from MongoDB."""

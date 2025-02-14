@@ -14,7 +14,7 @@ class AiSuiteAsstBase(BaseModel):
     model_api_source: str = "aisuite"
 
 class AiSuiteAsstTextMessage(AiSuiteAsstBase):
-    content: str
+    content: str | None
     token_usage: Optional[Dict[str, Optional[int]]]
     stop_reason: Optional[str]
 
