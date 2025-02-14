@@ -11,6 +11,8 @@ from webserver.tools.perplexity import get_tool_function_map as get_perplexity_t
 from webserver.tools.spotify import get_tool_function_map as get_spotify_tool_map
 from webserver.tools.tidal import get_tool_function_map as get_tidal_tool_map
 from webserver.tools.notion import get_tool_function_map as get_notion_tool_map
+from webserver.tools.google_calendar_helper import get_tool_function_map as get_gcal_tool_map
+from webserver.tools.sensor_values import get_tool_function_map as get_sensor_tool_map
 logger = logging.getLogger(__name__)
 
 class AssistantRoom:
@@ -56,6 +58,8 @@ class AssistantRoom:
         spotify_tool_map = get_spotify_tool_map()
         tidal_tool_map = get_tidal_tool_map()
         notion_tool_map = get_notion_tool_map()
+        gcal_tool_map = get_gcal_tool_map()
+        sensor_tool_map = get_sensor_tool_map()
         
         # Merge all tool maps
         self.tool_map = {
@@ -64,7 +68,9 @@ class AssistantRoom:
             **perplexity_tool_map,
             **spotify_tool_map,
             **tidal_tool_map,
-            **notion_tool_map
+            **notion_tool_map,
+            **gcal_tool_map,
+            **sensor_tool_map
         }
         
         # Generate tool usage guide from system prompt descriptions
