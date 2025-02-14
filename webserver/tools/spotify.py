@@ -23,27 +23,31 @@ def get_devices() -> list:
     devices = sp.devices()
     return devices.get("devices", [])
 
-def get_show(show_name: str, market: str = "US") -> dict:
+def get_show(show_name: str, market: str = "US", limit: int = 5) -> list:
+    """
+    Search for Spotify shows by name and return top matches.
+    
+    :param show_name: Name of the show to search for
+    :param market: Market code (default: 'US')
+    :param limit: Number of top results to return (default: 5)
+    :return: List of matching shows sorted by similarity score
+    """
     result = sp.search(q=show_name, type="show", market=market, limit=25)
     shows = result.get("shows", {}).get("items", [])
     
     if not shows:
-        return None
+        return []
         
-    # Find the best matching show using fuzzy matching
-    best_show = None
-    best_score = 0
-    
+    # Score all shows using fuzzy matching
+    scored_shows = []
     for show in shows:
-        # Compare show name using sequence matcher
         similarity = difflib.SequenceMatcher(None, show_name.lower(), show['name'].lower()).ratio()
-        
-        if similarity > best_score:
-            best_score = similarity
-            best_show = show
+        if similarity > 0.5:  # Only include reasonably good matches
+            scored_shows.append((similarity, show))
     
-    # Only return the show if it has a reasonable match score (e.g., > 0.5)
-    return best_show if best_score > 0.5 else None
+    # Sort by score (first element of tuple) and return top matches
+    scored_shows.sort(key=lambda x: x[0], reverse=True)
+    return [show for score, show in scored_shows[:limit]]
 
 def get_show_episodes(show_id: str, limit: int = 20, offset: int = 0, market: str = "US") -> dict:
     return sp.show_episodes(show_id, limit=limit, offset=offset, market=market)
@@ -108,17 +112,17 @@ def get_playlist(playlist_id: str, market: str = "US") -> dict:
             f"Invalid playlist id '{playlist_id}'. Please provide a valid Spotify playlist id (typically a 22-character base62 string)."
         ) from e
 
-def search_song(song_name: str, market: str = "US", artist_name: str = None, album_name: str = None) -> dict:
+def search_song(song_name: str, market: str = "US", artist_name: str = None, album_name: str = None, limit: int = 5) -> list:
     """
-    Search for a song on Spotify and returns the best matching track.
+    Search for songs on Spotify and return top matches.
 
-    :param song_name: The name of the song to search for.
-    :param market: Optional market code (default: 'US').
-    :param artist_name: Optional artist name to further refine the search.
-    :param album_name: Optional album name to further refine the search.
-    :return: The best matching track dictionary or None if no good match is found.
+    :param song_name: The name of the song to search for
+    :param market: Optional market code (default: 'US')
+    :param artist_name: Optional artist name to further refine the search
+    :param album_name: Optional album name to further refine the search
+    :param limit: Number of top results to return (default: 5)
+    :return: List of matching tracks sorted by similarity score
     """
-    # Build the query string with optional filters for artist and album.
     query = f'track:"{song_name}"'
     if artist_name:
         query += f' artist:"{artist_name}"'
@@ -129,53 +133,48 @@ def search_song(song_name: str, market: str = "US", artist_name: str = None, alb
     tracks = result.get("tracks", {}).get("items", [])
     
     if not tracks:
-        return None
+        return []
 
-    best_track = None
-    best_score = 0.0
+    scored_tracks = []
     for track in tracks:
         similarity = difflib.SequenceMatcher(None, song_name.lower(), track["name"].lower()).ratio()
-        if similarity > best_score:
-            best_score = similarity
-            best_track = track
+        if similarity > 0.5:  # Only include reasonably good matches
+            scored_tracks.append((similarity, track))
 
-    return best_track if best_score > 0.5 else None
+    # Sort by score (first element of tuple) and return top matches
+    scored_tracks.sort(key=lambda x: x[0], reverse=True)
+    return [track for score, track in scored_tracks[:limit]]
 
-def get_playlist_by_name(playlist_name: str, market: str = "US") -> dict:
+def get_playlist_by_name(playlist_name: str, market: str = "US", limit: int = 5) -> list:
     """
-    Search for a Spotify playlist by its name among the current user's playlists.
+    Search for Spotify playlists by name among the current user's playlists.
 
-    :param playlist_name: The name of the playlist to search for.
-    :param market: Optional market code (default: 'US').
-    :return: The best matching playlist dictionary or None if no good match is found.
+    :param playlist_name: The name of the playlist to search for
+    :param market: Optional market code (default: 'US')
+    :param limit: Number of top results to return (default: 5)
+    :return: List of matching playlists sorted by similarity score
     """
-    # Get all playlists for the current user
     results = sp.current_user_playlists()
     playlists = results['items']
     
-    # Get all playlists (Spotify returns max 50 at a time)
     while results['next']:
         results = sp.next(results)
         playlists.extend(results['items'])
 
     if not playlists:
-        return {"message": "No playlists found for the current user."}
+        return []
 
-    best_playlist = None
-    best_score = 0.0
+    scored_playlists = []
     for playlist in playlists:
-        # Skip if the playlist is None or missing a name
         if not playlist or "name" not in playlist:
             continue
         similarity = difflib.SequenceMatcher(None, playlist_name.lower(), playlist["name"].lower()).ratio()
-        if similarity > best_score:
-            best_score = similarity
-            best_playlist = playlist
+        if similarity > 0.5:  # Only include reasonably good matches
+            scored_playlists.append((similarity, playlist))
 
-    if best_playlist is None or best_score <= 0.5:
-        return {"message": "No matching playlist found."}
-    
-    return best_playlist
+    # Sort by score (first element of tuple) and return top matches
+    scored_playlists.sort(key=lambda x: x[0], reverse=True)
+    return [playlist for score, playlist in scored_playlists[:limit]]
 
 def get_playlist_tracks(playlist_id: str, market: str = "US") -> dict:
     """
@@ -253,7 +252,7 @@ def get_tool_function_map():
         },
         "spotify_get_show": {
             "function": get_show,
-            "description": "Search for a Spotify show by name",
+            "description": "Search for Spotify shows by name and return top matches",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -265,6 +264,11 @@ def get_tool_function_map():
                         "type": "string",
                         "description": "Market code (e.g., 'US')",
                         "default": "US",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Number of top results to return",
+                        "default": 5,
                     },
                 },
                 "required": ["show_name"],
@@ -379,7 +383,7 @@ def get_tool_function_map():
         },
         "spotify_get_playlist_by_name": {
             "function": get_playlist_by_name,
-            "description": "Search for a Spotify playlist by name using fuzzy matching",
+            "description": "Search for Spotify playlists by name and return top matches",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -391,6 +395,11 @@ def get_tool_function_map():
                         "type": "string",
                         "description": "Market code (e.g., 'US')",
                         "default": "US",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Number of top results to return",
+                        "default": 5,
                     },
                 },
                 "required": ["playlist_name"],
@@ -417,7 +426,7 @@ def get_tool_function_map():
         },
         "spotify_search_song": {
             "function": search_song,
-            "description": "Search for a song on Spotify and return the best match",
+            "description": "Search for songs on Spotify and return top matches",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -437,6 +446,11 @@ def get_tool_function_map():
                     "album_name": {
                         "type": "string",
                         "description": "Optional album name to narrow down the search",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Number of top results to return",
+                        "default": 5,
                     },
                 },
                 "required": ["song_name"],
@@ -508,10 +522,11 @@ if __name__ == "__main__":
 
     # Test get_show for "acquired"
     print("\nTesting get_show() for 'acquired':")
-    show = get_show("acquired")
-    if show:
-        print(f"Show found: {show['name']}")
-        print(f"Description: {show['description'][:100]}...")
-        print(f"Publisher: {show['publisher']}")
+    shows = get_show("acquired")
+    if shows:
+        for show in shows:
+            print(f"Show found: {show['name']}")
+            print(f"Description: {show['description'][:100]}...")
+            print(f"Publisher: {show['publisher']}")
     else:
-        print("Show not found")
+        print("No shows found")
