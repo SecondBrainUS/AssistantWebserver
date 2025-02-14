@@ -56,7 +56,13 @@ def create_playlist(user_id: str, playlist_name: str, description: str, public: 
     :param playlist_name: Name of the new playlist
     :param description: Description of the playlist
     :param public: Whether the playlist should be public (default: False)
-    :return: Dictionary containing the created playlist details
+    :return: Dictionary containing the created playlist details including:
+            - id: The playlist's Spotify ID
+            - name: The playlist's name
+            - uri: The playlist's Spotify URI
+            - external_urls: URLs to access the playlist
+            - owner: Information about the playlist owner
+    :raises Exception: If playlist creation fails
     """
     try:
         logger.info(f"Creating playlist '{playlist_name}' for user {user_id}")
@@ -137,31 +143,28 @@ def search_song(song_name: str, market: str = "US", artist_name: str = None, alb
 
 def get_playlist_by_name(playlist_name: str, market: str = "US") -> dict:
     """
-    Search for a Spotify playlist by its name and return the best matching playlist.
+    Search for a Spotify playlist by its name among the current user's playlists.
 
     :param playlist_name: The name of the playlist to search for.
     :param market: Optional market code (default: 'US').
     :return: The best matching playlist dictionary or None if no good match is found.
     """
-    result = sp.search(q=playlist_name, type="playlist", market=market, limit=25)
+    # Get all playlists for the current user
+    results = sp.current_user_playlists()
+    playlists = results['items']
     
-    # Check if the Spotify search returned a valid response:
-    if not result or not isinstance(result, dict):
-        return {"message": "Error retrieving playlist from Spotify."}
-    
-    # Safely extract playlists
-    playlists_info = result.get("playlists")
-    if not playlists_info or not isinstance(playlists_info, dict):
-        return {"message": "No matching playlist found."}
-    
-    playlists = playlists_info.get("items", [])
+    # Get all playlists (Spotify returns max 50 at a time)
+    while results['next']:
+        results = sp.next(results)
+        playlists.extend(results['items'])
+
     if not playlists:
-        return {"message": "No matching playlist found."}
+        return {"message": "No playlists found for the current user."}
 
     best_playlist = None
     best_score = 0.0
     for playlist in playlists:
-        # Skip if the playlist is None or missing a name thereby preventing subscripting errors
+        # Skip if the playlist is None or missing a name
         if not playlist or "name" not in playlist:
             continue
         similarity = difflib.SequenceMatcher(None, playlist_name.lower(), playlist["name"].lower()).ratio()
@@ -218,6 +221,24 @@ def get_playlist_tracks(playlist_id: str, market: str = "US") -> dict:
     except Exception as e:
         logger.error(f"Error getting playlist tracks: {str(e)}")
         raise Exception(f"Error getting playlist tracks: {str(e)}") from e
+
+def get_current_user() -> dict:
+    """
+    Get the current user's Spotify profile information.
+    
+    :return: Dictionary containing user profile information including:
+            - id: The user's Spotify ID
+            - display_name: The user's display name
+            - email: The user's email (if available)
+            - country: The user's country code
+            - product: The user's Spotify subscription level
+    :raises Exception: If retrieving user profile fails
+    """
+    try:
+        return sp.current_user()
+    except Exception as e:
+        logger.error(f"Failed to get current user profile: {str(e)}")
+        raise Exception(f"Failed to get current user profile: {str(e)}") from e
 
 def get_tool_function_map():
     """Get the tool function map for Spotify-related functions"""
@@ -421,6 +442,33 @@ def get_tool_function_map():
                 "required": ["song_name"],
             },
         },
+        "spotify_create_playlist": {
+            "function": create_playlist,
+            "description": "Create a new Spotify playlist for a user",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "user_id": {
+                        "type": "string",
+                        "description": "Spotify user ID to create the playlist for",
+                    },
+                    "playlist_name": {
+                        "type": "string",
+                        "description": "Name of the new playlist",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Description of the playlist",
+                    },
+                    "public": {
+                        "type": "boolean",
+                        "description": "Whether the playlist should be public",
+                        "default": False,
+                    },
+                },
+                "required": ["user_id", "playlist_name", "description"],
+            },
+        },
         "spotify_get_playlist_tracks": {
             "function": get_playlist_tracks,
             "description": "Get all tracks from a Spotify playlist",
@@ -438,6 +486,14 @@ def get_tool_function_map():
                     },
                 },
                 "required": ["playlist_id"],
+            },
+        },
+        "spotify_get_current_user": {
+            "function": get_current_user,
+            "description": "Get the current user's Spotify profile information",
+            "parameters": {
+                "type": "object",
+                "properties": {},
             },
         },
     }

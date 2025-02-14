@@ -1,14 +1,15 @@
 from bson import ObjectId
 from datetime import datetime
+import json
+
+class MongoJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, ObjectId):
+            return str(obj)
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return json.JSONEncoder.default(self, obj)
 
 def serialize_doc(doc):
-    """Convert MongoDB document to JSON-serializable dict."""
-    if isinstance(doc, dict):
-        return {k: serialize_doc(v) for k, v in doc.items()}
-    elif isinstance(doc, list):
-        return [serialize_doc(v) for v in doc]
-    elif isinstance(doc, ObjectId):
-        return str(doc)
-    elif isinstance(doc, datetime):
-        return doc.isoformat()
-    return doc 
+    """Convert MongoDB document to JSON-serializable dict using MongoJSONEncoder."""
+    return json.loads(json.dumps(doc, cls=MongoJSONEncoder)) 

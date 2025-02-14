@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Any
 import aisuite.framework
 from pydantic import BaseModel
 import aisuite
+import hashlib
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,8 @@ class AiSuiteAssistant:
         self._max_tool_chain_turns = 20
         self._allow_tool_chaining = True
         self._tool_chain_counter = 0
+        self._function_retry_counts = {}  # Track retry counts for function + args
+        self._max_retries = 3  # Maximum retries per unique function call
         
         self._event_callbacks = {
             "tool_call": set(),
@@ -92,11 +95,36 @@ class AiSuiteAssistant:
             }
         } for name, meta in self._tool_function_map.items()]
 
+    def _hash_arguments(self, arguments: Any) -> str:
+        """Create a consistent hash of function arguments"""
+        # Convert arguments to a stable string representation and encode
+        args_str = json.dumps(arguments, sort_keys=True).encode('utf-8')
+        # Create SHA-256 hash and return first 16 characters (64 bits) of hex digest
+        return hashlib.sha256(args_str).hexdigest()[:16]
+
     async def _execute_tool(self, tool_call: AiSuiteAsstFunctionCall) -> Any:
         """Execute a tool and get its result"""
         if tool_call.name not in self._tool_function_map:
-            raise ValueError(f"Unknown tool: {tool_call.name}")
-            
+            error_msg = f"Unknown tool: {tool_call.name}"
+            logger.error(error_msg)
+            await self._trigger_event("error", {"message": error_msg})
+            raise ValueError(error_msg)
+        
+        # Create unique key using function name and hashed arguments
+        args_hash = self._hash_arguments(tool_call.arguments)
+        call_key = f"{tool_call.name}:{args_hash}"
+        
+        # Initialize retry count if not exists
+        if call_key not in self._function_retry_counts:
+            self._function_retry_counts[call_key] = 0
+        
+        # Check if max retries exceeded
+        if self._function_retry_counts[call_key] >= self._max_retries:
+            error_msg = f"Max retries ({self._max_retries}) exceeded for tool {tool_call.name}"
+            logger.error(error_msg)
+            await self._trigger_event("error", {"message": error_msg})
+            raise ValueError(error_msg)
+        
         function = self._tool_function_map[tool_call.name]["function"]
         try:
             # Handle different types of functions
@@ -104,15 +132,39 @@ class AiSuiteAssistant:
                 # If function is a string, just return it (legacy behavior)
                 return function
             elif callable(function):
-                if asyncio.iscoroutinefunction(function):
-                    result = await function(**tool_call.arguments)
-                else:
-                    result = function(**tool_call.arguments)
-                return result
+                try:
+                    if asyncio.iscoroutinefunction(function):
+                        result = await function(**tool_call.arguments)
+                    else:
+                        result = function(**tool_call.arguments)
+                    return result
+                except TypeError as e:
+                    error_msg = f"Invalid arguments for tool {tool_call.name}: {str(e)}"
+                    logger.error(error_msg)
+                    await self._trigger_event("error", {"message": error_msg})
+                    raise ValueError(error_msg) from e
+                except Exception as e:
+                    error_msg = f"Tool {tool_call.name} execution failed: {str(e)}"
+                    logger.error(error_msg)
+                    await self._trigger_event("error", {"message": error_msg})
+                    raise
             else:
-                raise ValueError(f"Invalid function type for tool {tool_call.name}")
+                error_msg = f"Invalid function type for tool {tool_call.name}"
+                logger.error(error_msg)
+                await self._trigger_event("error", {"message": error_msg})
+                raise ValueError(error_msg)
+            
         except Exception as e:
-            logger.error(f"Tool execution error: {e}")
+            logger.error(f"Tool execution error: {str(e)}", exc_info=True)
+            # Increment retry count on error
+            self._function_retry_counts[call_key] += 1
+            # Trigger error event before re-raising
+            await self._trigger_event("error", {
+                "message": f"Error executing tool {tool_call.name}: {str(e)}",
+                "tool_name": tool_call.name,
+                "arguments": tool_call.arguments,
+                "retry_count": self._function_retry_counts[call_key]
+            })
             raise
 
     def _create_tool_message(self, tool_result: AiSuiteAsstFunctionResult) -> Dict:

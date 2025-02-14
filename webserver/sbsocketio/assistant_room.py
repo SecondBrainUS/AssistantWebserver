@@ -59,7 +59,7 @@ class AssistantRoom:
         
         # Merge all tool maps
         self.tool_map = {
-            **assistant_tool_map, 
+            #**assistant_tool_map, 
             **stocks_tool_map,
             **perplexity_tool_map,
             **spotify_tool_map,

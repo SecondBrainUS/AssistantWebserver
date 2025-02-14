@@ -56,7 +56,7 @@ class AiSuiteRoom(AssistantRoom):
                 self.set_system_prompt(self.tool_usage_guide)
             
             ai_suite.set_tool_function_map(self.tool_map)
-            ai_suite.set_tool_chain_config(allow_chaining=True, max_turns=8)
+            ai_suite.set_tool_chain_config(allow_chaining=True, max_turns=30)
 
             ai_suite.add_event_callback('tool_call', self._handle_function_call)
             ai_suite.add_event_callback('tool_result', self._handle_function_result)
@@ -342,7 +342,31 @@ class AiSuiteRoom(AssistantRoom):
         await self.broadcast(f"receive_message {self.room_id}", None, message_event)
 
     async def _handle_aisuite_error(self, error: dict) -> None:
-        pass
+        """Handle errors from the AISuite API."""
+        logger.error(f"[HANDLE AISUITE ERROR] Error from AISuite: {error}")
+        
+        message_id = str(uuid.uuid4())
+        created_timestamp = datetime.now()
+        
+        error_message = {
+            "type": "sbaw.error",
+            "data": {
+                "id": message_id,
+                "error": str(error.get("message", "Unknown error occurred")),
+                "created_timestamp": created_timestamp.isoformat()
+            }
+        }
+        
+        # Broadcast error to all users in the room
+        await self.broadcast(f"receive_message {self.room_id}", None, error_message)
+        
+        # Also emit a specific error event
+        await self.sio.emit(
+            "error",
+            {"error": str(error.get("message", "Unknown error occurred"))},
+            room=self.room_id,
+            namespace=self.namespace
+        )
 
 # TODO: _execute_tool should return the class for the result
 # TODO: model_api_source -> ai_model ID/name handling
