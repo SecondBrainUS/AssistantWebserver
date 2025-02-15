@@ -26,6 +26,7 @@ class SensorValuesClient:
 
     def get_metric_value(self, location_id: str, metric: str) -> Dict:
         url = f"{self.base_url}/location/{location_id}/current/{metric}"
+        print(f"Attempting to fetch from URL: {url}")  # Debug print
         response = requests.get(url)
         if response.status_code == 200:
             data = response.json()
@@ -34,7 +35,11 @@ class SensorValuesClient:
                 "unit": data.get("unit")
             }
         else:
-            raise Exception(f"Failed to get {metric} data: {response.status_code}")
+            error_message = response.json().get("detail", f"Failed to get {metric} data: {response.status_code}")
+            return {
+                "status": "error",
+                "detail": error_message
+            }
 
 # Create a single instance to be used by all functions
 client = SensorValuesClient(

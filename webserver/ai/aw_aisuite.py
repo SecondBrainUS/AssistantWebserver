@@ -10,6 +10,10 @@ import hashlib
 
 logger = logging.getLogger(__name__)
 
+class MaxRetriesExceededError(Exception):
+    """Raised when a tool execution exceeds maximum retry attempts"""
+    pass
+
 class AiSuiteAsstBase(BaseModel):
     model_id: str
     model_api_source: str = "aisuite"
@@ -123,7 +127,7 @@ class AiSuiteAssistant:
             error_msg = f"Max retries ({self._max_retries}) exceeded for tool {tool_call.name}"
             logger.error(error_msg)
             await self._trigger_event("error", {"message": error_msg})
-            raise ValueError(error_msg)
+            raise MaxRetriesExceededError(error_msg)
         
         function = self._tool_function_map[tool_call.name]["function"]
         try:
@@ -327,6 +331,27 @@ class AiSuiteAssistant:
                             })
                             conversation.append(self._create_tool_message(tool_result))
                             
+                        except MaxRetriesExceededError as e:
+                            # Create failed tool result
+                            tool_result = AiSuiteAsstFunctionResult(
+                                model_id=model,
+                                call_id=tool_call.call_id,
+                                name=tool_call.name,
+                                arguments=tool_call.arguments,
+                                result={"error": str(e), "status": "failed"}
+                            )
+                            tool_results.append(tool_result)
+                            await self._trigger_event("tool_result", tool_result)
+                            
+                            # Return error response without further LLM calls
+                            return AiSuiteResponse(
+                                id=response_id,
+                                content=f"Error executing tool {tool_call.name}: {str(e)}",
+                                tool_calls=tool_calls + current_tool_calls,
+                                tool_results=tool_results,
+                                token_usage=token_usage,
+                                stop_reason="tool_error"
+                            )
                         except Exception as e:
                             logger.error(f"Tool execution error for {tool_call.name}: {e}")
                             tool_result = AiSuiteAsstFunctionResult(
