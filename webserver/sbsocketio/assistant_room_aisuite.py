@@ -368,5 +368,29 @@ class AiSuiteRoom(AssistantRoom):
             namespace=self.namespace
         )
 
+    async def _handle_room_event(self, event: dict, sid: str) -> None:
+        logger.info(f"[AISUITE ROOM] [HANDLE ROOM EVENT] {event}")
+
+        event_type = event.get("type")
+        if not event_type:
+            logger.warning(f"[AISUITE ROOM] [HANDLE ROOM EVENT] No event type found in event: {event}")
+            return
+
+        if event_type == "sbaw.assistant.stop_processing":
+            self.stop_processing()
+        
+        if event_type == "sbaw.assistant.update_session":
+            self.update_session()
+        
+    # TODO: next
+    def update_session(self):
+        #self.conversation_history_length = 
+        #ai_suite.set_tool_chain_config(allow_chaining=True, max_turns=30)
+        pass
+
+    def stop_processing(self):
+        """Request to stop the current processing"""
+        self.api.stop_processing()
+
 # TODO: _execute_tool should return the class for the result
 # TODO: model_api_source -> ai_model ID/name handling

@@ -13,6 +13,7 @@ from webserver.tools.tidal import get_tool_function_map as get_tidal_tool_map
 from webserver.tools.notion import get_tool_function_map as get_notion_tool_map
 from webserver.tools.google_calendar_helper import get_tool_function_map as get_gcal_tool_map
 from webserver.tools.sensor_values import get_tool_function_map as get_sensor_tool_map
+from webserver.tools.finance import get_tool_function_map as get_finance_tool_map
 logger = logging.getLogger(__name__)
 
 class AssistantRoom:
@@ -54,6 +55,7 @@ class AssistantRoom:
         # Get tool maps from all sources
         assistant_tool_map = self.assistant_functions.get_tool_function_map()
         stocks_tool_map = get_stocks_tool_map()
+        finance_tool_map = get_finance_tool_map()
         perplexity_tool_map = get_perplexity_tool_map()
         spotify_tool_map = get_spotify_tool_map()
         tidal_tool_map = get_tidal_tool_map()
@@ -65,6 +67,7 @@ class AssistantRoom:
         self.tool_map = {
             #**assistant_tool_map, 
             **stocks_tool_map,
+            **finance_tool_map,
             **perplexity_tool_map,
             **spotify_tool_map,
             **tidal_tool_map,
@@ -143,7 +146,7 @@ class AssistantRoom:
     # TODO: wrap user message broadcasting and user message storage then call handle_send_message so derived class behavior runs
     # TODO: also add self.connection_manager.get_user_id(sid) user id logic to the handle_send_message
     # TODO: also wrap message_sent return event for original sender
-    async def _handle_room_message(self, message: dict, sid: str, model_id: str) -> None:
+    async def _handle_room_event(self, event: dict, sid: str) -> None:
         pass
 
     @abstractmethod
@@ -152,10 +155,6 @@ class AssistantRoom:
 
     @abstractmethod
     async def handle_send_message(self, message: dict, sid: str, model_id: str) -> None:
-        pass
-
-    @abstractmethod
-    async def send_message_to_ai(self, message: dict, sid: str, userid: str, model_id: str) -> None:
         pass
 
     @abstractmethod

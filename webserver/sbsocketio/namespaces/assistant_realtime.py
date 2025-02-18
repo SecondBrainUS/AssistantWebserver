@@ -255,3 +255,37 @@ class AssistantRealtimeNamespace(BaseNamespace):
                     room=sid, 
                     namespace=self.namespace
                 )
+        
+        @self.sio.on('event', namespace=self.namespace)
+        async def handle_room_event(sid: str, data: dict):
+            try:
+                logger.debug(f"[ROOM EVENT] SID: {sid}  Data: {data}")
+                room_id = data.get('room_id')
+                if not (room_id):
+                    logger.warning(f"[ROOM EVENT] Invalid room_id: {room_id}")
+                    return
+
+                logger.debug(f"[ROOM EVENT] Got room_id, getting room")
+                room = self.room_manager.get_room(room_id)
+                if not room:
+                    logger.warning(f"[ROOM EVENT] Room not found: {room_id}")
+                    await self.sio.emit('room_error', 
+                        {'error': 'Room does not exist'}, 
+                        room=sid, 
+                        namespace=self.namespace
+                    )
+                    return
+                
+                event = data.get('event')
+
+                logger.debug(f"[ROOM EVENT] Found room {room_id}, passing event from {sid} to room")
+                await room._handle_room_event(event, sid)
+                    
+            except Exception as e:
+                logger.error(f"Top-level error in handle_room_event: {e}")
+                logger.error(f"Full traceback: {traceback.format_exc()}")
+                await self.sio.emit('room_error', 
+                    {'error': f'Failed to process room_event: {str(e)}'}, 
+                    room=sid, 
+                    namespace=self.namespace
+                )

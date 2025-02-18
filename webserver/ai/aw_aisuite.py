@@ -10,10 +10,6 @@ import hashlib
 
 logger = logging.getLogger(__name__)
 
-class MaxRetriesExceededError(Exception):
-    """Raised when a tool execution exceeds maximum retry attempts"""
-    pass
-
 class AiSuiteAsstBase(BaseModel):
     model_id: str
     model_api_source: str = "aisuite"
@@ -34,6 +30,10 @@ class AiSuiteAsstFunctionResult(AiSuiteAsstBase):
     name: str
     arguments: Any
     result: Any
+
+class MaxRetriesExceededError(Exception):
+    """Raised when a tool execution exceeds maximum retry attempts"""
+    pass
 
 class AiSuiteResponse(BaseModel):
     """Standardized response format for both regular messages and tool-using conversations"""
@@ -60,9 +60,11 @@ class AiSuiteAssistant:
         self._max_tool_chain_turns = 20
         self._allow_tool_chaining = True
         self._tool_chain_counter = 0
-        self._function_retry_counts = {}  # Track retry counts for function + args
-        self._max_retries = 3  # Maximum retries per unique function call
-        
+        self._function_retry_counts = {}
+        self._max_retries = 3
+        self.is_processing = False
+        self._should_stop = False
+
         self._event_callbacks = {
             "tool_call": set(),
             "tool_result": set(),
@@ -84,7 +86,6 @@ class AiSuiteAssistant:
         self._allow_tool_chaining = allow_chaining
         self._max_tool_chain_turns = max_turns
         
-    # anthropic.BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': "tools.0: Input tag 'function' found using 'type' does not match any of the expected tags: 'bash_20250124', 'custom', 'text_editor_20250124'"}}
     def _get_tools_config(self) -> List[Dict]:
         """Convert tool map to aisuite tools format"""
         if not self._tool_function_map:
@@ -208,6 +209,10 @@ class AiSuiteAssistant:
             except Exception as e:
                 logger.error(f"Error in {event_type} callback: {e}")
 
+    def stop_processing(self):
+        """Request to stop the current processing"""
+        self._should_stop = True
+
     async def generate_response(
         self,
         messages: List[Dict],
@@ -227,6 +232,9 @@ class AiSuiteAssistant:
         Returns:
             AiSuiteResponse object containing the response and any tool interactions
         """
+        self.is_processing = True
+        self._should_stop = False
+
         # Add system prompt for tool usage
         system_prompt = {
             "role": "system",
@@ -273,11 +281,19 @@ class AiSuiteAssistant:
 
             final_response = response
             
+            # Check for stop request after initial model call
+            if self._should_stop:
+                raise asyncio.CancelledError("Processing stopped by user request")
+
             # Handle tool calls if present
             if response.choices[0].message.tool_calls:
 
                 while (self._allow_tool_chaining and 
                        self._tool_chain_counter < self._max_tool_chain_turns):
+                    
+                    # Check for stop request at start of each tool chain iteration
+                    if self._should_stop:
+                        raise asyncio.CancelledError("Processing stopped by user request")
                     
                     self._tool_chain_counter += 1
                     current_tool_calls = []
@@ -419,8 +435,19 @@ class AiSuiteAssistant:
                 conversation_messages=conversation
             )
             
+        except asyncio.CancelledError as e:
+            logger.info(f"Processing cancelled: {str(e)}")
+            return AiSuiteResponse(
+                id=response_id,
+                content="Processing was stopped.",
+                tool_calls=tool_calls if 'tool_calls' in locals() else [],
+                tool_results=tool_results if 'tool_results' in locals() else [],
+                token_usage=None,
+                stop_reason="cancelled"
+            )
         except Exception as e:
             logger.error(f"Error generating response: {e}")
             raise
-
-#TODO: Need an "is_processing" variable
+        finally:
+            self.is_processing = False
+            self._should_stop = False
