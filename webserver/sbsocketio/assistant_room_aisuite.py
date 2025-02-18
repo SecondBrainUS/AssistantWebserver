@@ -378,9 +378,17 @@ class AiSuiteRoom(AssistantRoom):
 
         if event_type == "sbaw.assistant.stop_processing":
             self.stop_processing()
-        
+
         if event_type == "sbaw.assistant.update_session":
             self.update_session()
+
+        client_event_id = event.get("id")
+        logger.info(f"[AISUITE ROOM] [HANDLE ROOM EVENT] Emitting event_received event for client event id {client_event_id}")
+        await self.sio.emit(f'event_received {client_event_id}', 
+                {'success': True}, 
+                room=sid, 
+                namespace=self.namespace
+            )
         
     # TODO: next
     def update_session(self):
