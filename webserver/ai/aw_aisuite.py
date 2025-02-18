@@ -111,7 +111,7 @@ class AiSuiteAssistant:
         """Execute a tool and get its result"""
         # Check if processing should stop
         if self._should_stop:
-            raise asyncio.CancelledError("Tool execution cancelled by user request")
+            return "Tool execution cancelled by user request"
 
         if tool_call.name not in self._tool_function_map:
             error_msg = f"Unknown tool: {tool_call.name}"
