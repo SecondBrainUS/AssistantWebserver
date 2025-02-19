@@ -115,12 +115,7 @@ async def get_messages(chat_id: str, request: Request):
             raise HTTPException(status_code=404, detail="Chat not found")
             
         messages = await mongodb_client.db["messages"].find({"chat_id": chat_id}).to_list(length=100)
-        logger.info('--------------------------------')
-        logger.info(f"Messages: {messages}")
-        logger.info('--------------------------------')
         formatted_messages = serialize_doc(messages)
-        logger.info(f"Formatted Messages: {formatted_messages}")
-        logger.info('--------------------------------')
         return formatted_messages
         
     except ValueError as e:

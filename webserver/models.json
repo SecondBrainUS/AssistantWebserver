@@ -171,6 +171,42 @@
 			"full_name": "Grok 2 Latest",
 			"description": "Grok 2 Latest",
 			"is_favorite": true
+		},
+		{
+			"model_id": "aisuite.openai:o1-mini",
+			"model_api_source": "aisuite",
+			"provider": "OpenAI",
+			"display_name": "OpenAI o1 Mini",
+			"full_name": "OpenAI o1 Mini",
+			"description": "o1 Mini",
+			"is_favorite": true
+		},
+		{
+			"model_id": "aisuite.openai:o1-mini-2024-09-12",
+			"model_api_source": "aisuite",
+			"provider": "OpenAI",
+			"display_name": "OpenAI o1 Mini 2024-09-12",
+			"full_name": "OpenAI o1 Mini 2024-09-12",
+			"description": "o1 Mini 2024-09-12",
+			"is_favorite": true
+		},
+		{
+			"model_id": "aisuite.openai:o1-preview",
+			"model_api_source": "aisuite",
+			"provider": "OpenAI",
+			"display_name": "OpenAI o1 Preview",
+			"full_name": "OpenAI o1 Preview",
+			"description": "o1 Preview",
+			"is_favorite": true
+		},
+		{
+			"model_id": "aisuite.openai:o1-preview-2024-09-12",
+			"model_api_source": "aisuite",
+			"provider": "OpenAI",
+			"display_name": "OpenAI o1 Preview 2024-09-12",
+			"full_name": "OpenAI o1 Preview 2024-09-12",
+			"description": "o1 Preview 2024-09-12",
+			"is_favorite": true
 		}
 	]
 }
