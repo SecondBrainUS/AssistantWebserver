@@ -109,7 +109,7 @@ def create_parameter_schema_tool():
 	}
 # , dependencies=[Depends(verify_access_token), Depends(get_session)]
 @router.post("/compile")
-async def create_chat(
+async def compile(
 	prompt: str = Body(...),
 	modelid: str = Body(...),
 	use_tools: bool = Body(default=True)
@@ -118,6 +118,8 @@ async def create_chat(
 		raise HTTPException(status_code=400, detail="prompt is required")
 	if not modelid:
 		raise HTTPException(status_code=400, detail="model_id is required")
+
+	modelid = modelid.replace('aisuite.', '')
 
 	try:
 		# Create client with API configurations
