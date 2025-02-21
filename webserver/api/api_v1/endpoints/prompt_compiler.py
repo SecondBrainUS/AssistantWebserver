@@ -107,6 +107,47 @@ def create_parameter_schema_tool():
 			}
 		}
 	}
+
+def create_fill_parameters_tool(parameters_schema):
+	"""Creates a tool definition for filling parameters based on the existing schema"""
+	properties = {}
+	
+	for param in parameters_schema:
+		param_schema = {
+			"type": param["type"],
+			"description": param["description"]
+		}
+		
+		# Only add enum if it exists and is not None
+		if param.get("enum") is not None:
+			param_schema["enum"] = param["enum"]
+			
+		# Handle array type parameters
+		if param["type"] == "array":
+			param_schema["type"] = "array"
+			param_schema["items"] = {"type": "string"}
+			
+		properties[param["name"]] = param_schema
+
+	return {
+		"type": "function",
+		"function": {
+			"name": "fill_parameters",
+			"description": "Fill out parameter values based on the user's prompt text",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"values": {
+						"type": "object",
+						"properties": properties,
+						"required": [param["name"] for param in parameters_schema]
+					}
+				},
+				"required": ["values"]
+			}
+		}
+	}
+
 # , dependencies=[Depends(verify_access_token), Depends(get_session)]
 @router.post("/compile")
 async def compile(
@@ -237,6 +278,49 @@ async def compile(
 			},
 			status_code=status.HTTP_200_OK
 		)
+
+	except Exception as e:
+		logger.error(f"Error {e}", exc_info=True)
+		raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.post("/update_parameters")
+async def update_parameters(
+	prompt: str = Body(...),
+	parameters_schema: List[Dict[str, Any]] = Body(...),
+	original_prompt: str = Body(...),
+	modelid: str = Body(...)
+):
+	try:
+		client = aisuite.Client()
+		client.configure(client_config)
+		
+		modelid = modelid.replace('aisuite.', '')
+		
+		messages = [{
+			"role": "system",
+			"content": "You are a parameter extraction assistant. Your task is to extract parameter values from the user's new prompt text based on the existing parameter schema."
+		}, {
+			"role": "user",
+			"content": f"Original prompt: {original_prompt}\n\nNew prompt text: {prompt}\n\nPlease extract the parameter values from the new prompt text."
+		}]
+
+		response = client.chat.completions.create(
+			model=modelid,
+			messages=messages,
+			tools=[create_fill_parameters_tool(parameters_schema)],
+			tool_choice={"type": "function", "function": {"name": "fill_parameters"}}
+		)
+
+		if response.choices[0].message.tool_calls:
+			tool_call = response.choices[0].message.tool_calls[0]
+			filled_values = json.loads(tool_call.function.arguments)
+			
+			return JSONResponse(
+				content={
+					"values": filled_values["values"]
+				},
+				status_code=status.HTTP_200_OK
+			)
 
 	except Exception as e:
 		logger.error(f"Error {e}", exc_info=True)
