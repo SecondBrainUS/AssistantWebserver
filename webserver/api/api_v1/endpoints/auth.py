@@ -6,7 +6,7 @@ from starlette.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 from authlib.integrations.starlette_client import OAuth
 from sqlalchemy.orm import Session
-from jose import jwt
+from jose import jwt, JWTError
 from webserver.config import settings
 from webserver.db.assistantdb.connection import get_db
 from webserver.db.assistantdb.model import User, AuthGoogle, UserSession, UserWhitelist
@@ -16,10 +16,20 @@ import logging
 import json
 from webserver.db.memcache.connection import get_memcache_client
 from webserver.logger_config import init_logger
+from prometheus_client import Counter
+from authlib.integrations.base_client.errors import MismatchingStateError, OAuthError
 
 init_logger()
 
 logger = logging.getLogger(__name__)
+
+# Prometheus metrics
+AUTH_SUCCESS = Counter('auth_success_total', 'Successful authentication attempts', ['provider'])
+AUTH_FAILURE = Counter('auth_failure_total', 'Failed authentication attempts', ['provider', 'reason'])
+WHITELIST_VIOLATION = Counter('auth_whitelist_violation_total', 'Authentication attempts from non-whitelisted users', ['email', 'provider'])
+TOKEN_VALIDATION = Counter('token_validation_total', 'Token validation attempts', ['status', 'reason'])
+TOKEN_REFRESH = Counter('token_refresh_total', 'Token refresh attempts', ['status', 'reason'])
+AUTH_ERROR = Counter('auth_error_total', 'Authentication errors by type', ['endpoint', 'error_type'])
 
 # TODO: long term, use guest sessionid instead of userid for temp tokens during auth login process
 
@@ -147,38 +157,78 @@ async def login(provider: str, request: Request):
 async def callback(provider: str, request: Request, response: Response, db: Session = Depends(get_db)):
     """Callback from the provider's login page. Upserts the user. Creates a temporary token and redirects"""
     if provider not in ["google"]:
+        AUTH_FAILURE.labels(provider=provider, reason="unsupported_provider").inc()
+        logger.warning(f"[AUTH] Unsupported provider login attempt: {provider} from IP {request.client.host}")
         raise HTTPException(status_code=404, detail="Provider not supported")
 
-    token = None
-    userinfo = None
-    if provider == "google":
-        token = await google.authorize_access_token(request)
-        userinfo = token.get('userinfo')
-        if not userinfo:
-            raise HTTPException(status_code=401, detail="No userinfo")
-        if userinfo.get("email_verified") != True:
-            raise HTTPException(status_code=401, detail="Email not verified")
-        email = userinfo.get("email")
-        if not email:
-            raise HTTPException(status_code=401, detail="No email")
+    try:
+        token = None
+        userinfo = None
+        if provider == "google":
+            try:
+                token = await google.authorize_access_token(request)
+            except MismatchingStateError:
+                AUTH_FAILURE.labels(provider=provider, reason="csrf_token_mismatch").inc()
+                logger.warning(f"[AUTH] CSRF state token mismatch - IP: {request.client.host}")
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Invalid authentication state. Please try logging in again."
+                )
+            except OAuthError as e:
+                AUTH_FAILURE.labels(provider=provider, reason="oauth_error").inc()
+                logger.error(f"[AUTH] OAuth error - Provider: {provider}, IP: {request.client.host}, Error: {str(e)}")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Authentication error. Please try again."
+                )
+                
+            userinfo = token.get('userinfo')
+            
+            if not userinfo:
+                AUTH_FAILURE.labels(provider=provider, reason="no_userinfo").inc()
+                logger.error(f"[AUTH] No userinfo in token for IP {request.client.host}")
+                raise HTTPException(status_code=401, detail="No userinfo")
+                
+            if userinfo.get("email_verified") != True:
+                AUTH_FAILURE.labels(provider=provider, reason="email_not_verified").inc()
+                logger.warning(f"[AUTH] Unverified email login attempt: {userinfo.get('email')} from IP {request.client.host}")
+                raise HTTPException(status_code=401, detail="Email not verified")
+                
+            email = userinfo.get("email")
+            if not email:
+                AUTH_FAILURE.labels(provider=provider, reason="no_email").inc()
+                logger.error(f"[AUTH] No email in userinfo for IP {request.client.host}")
+                raise HTTPException(status_code=401, detail="No email")
+            
+            user_whitelist = db.query(UserWhitelist).filter(UserWhitelist.email == email).one_or_none()
+            if not user_whitelist:
+                WHITELIST_VIOLATION.labels(email=email, provider=provider).inc()
+                logger.warning(f"[AUTH] Non-whitelisted login attempt - Email: {email}, IP: {request.client.host}, Provider: {provider}")
+                raise HTTPException(status_code=401, detail="Email not whitelisted")
         
-        user_whitelist = db.query(UserWhitelist).filter(UserWhitelist.email == email).one_or_none()
-        if not user_whitelist:
-            raise HTTPException(status_code=401, detail="Email not whitelisted")
-    else:
-        return {"message": "Provider not supported"}
+        user = await create_or_update_user(db, provider, userinfo, token)
+        
+        user_data = {
+            "sub": str(user.user_id),
+            "auth_type": user.auth_type
+        }
 
-    user = await create_or_update_user(db, provider, userinfo, token)
+        AUTH_SUCCESS.labels(provider=provider).inc()
+        logger.info(f"[AUTH] Successful login - User: {user.email}, IP: {request.client.host}, Provider: {provider}")
 
-    user_data = {
-        "sub": str(user.user_id),
-        "auth_type": user.auth_type
-    }
+        temp_jwt = create_temp_jwt_token(user_data)
+        frontend_redirect = f"{settings.BASE_URL}/api/v1/auth/login-success-redirect?temp_token={temp_jwt}"
+        return RedirectResponse(frontend_redirect)
 
-    temp_jwt = create_temp_jwt_token(user_data)
-
-    frontend_redirect = f"{settings.BASE_URL}/api/v1/auth/login-success-redirect?temp_token={temp_jwt}"
-    return RedirectResponse(frontend_redirect)
+    except HTTPException:
+        raise
+    except Exception as e:
+        AUTH_FAILURE.labels(provider=provider, reason="unexpected_error").inc()
+        logger.error(f"[AUTH] Login error - Provider: {provider}, IP: {request.client.host}, Error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred. Please try again later."
+        )
 
 @router.get("/login-success-redirect")
 async def login_success_redirect(request: Request, response: Response):
@@ -221,10 +271,29 @@ async def validate_token(
     try:
         temp_token = request.query_params.get("temp_token")
         if not temp_token:
+            AUTH_ERROR.labels(endpoint="validate_token", error_type="missing_token").inc()
+            TOKEN_VALIDATION.labels(status="failure", reason="missing_token").inc()
+            logger.error(f"[AUTH] Token validation failed - IP: {request.client.host}, Error: Missing temporary token")
             raise HTTPException(status_code=400, detail="Missing temporary token")
             
-        payload = jwt.decode(temp_token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        try:
+            payload = jwt.decode(temp_token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        except JWTError as e:
+            error_msg = str(e)
+            error_type = "expired_token" if "expired" in error_msg.lower() else "invalid_token"
+            
+            AUTH_ERROR.labels(endpoint="validate_token", error_type=error_type).inc()
+            TOKEN_VALIDATION.labels(status="failure", reason=error_type).inc()
+            logger.error(f"[AUTH] Token validation failed - IP: {request.client.host}, Error: {error_msg}")
+            
+            if "expired" in error_msg.lower():
+                raise HTTPException(status_code=401, detail="Token expired")
+            raise HTTPException(status_code=401, detail="Invalid token format")
+
         if payload.get("token_type") != "temp":
+            AUTH_ERROR.labels(endpoint="validate_token", error_type="wrong_token_type").inc()
+            TOKEN_VALIDATION.labels(status="failure", reason="wrong_token_type").inc()
+            logger.error(f"[AUTH] Token validation failed - IP: {request.client.host}, Error: Invalid token type")
             raise HTTPException(status_code=400, detail="Invalid token type")
 
         # TODO: move to Pydantic model or class
@@ -290,32 +359,62 @@ async def validate_token(
 
         await memcache_client.set(session_id.encode(), json.dumps(user_data).encode())
 
+        TOKEN_VALIDATION.labels(status="success", reason="valid_token").inc()
+        logger.info(f"[AUTH] Token validation successful for user {user_data['sub']} from IP {request.client.host}")
         return {"status": "success"}
 
+    except HTTPException:
+        # Re-raise HTTP exceptions as they're already handled and counted
+        raise
     except Exception as e:
-        logger.error(f"[AUTH] Error in validate_token: {str(e)}")
-        raise HTTPException(status_code=500)
+        AUTH_ERROR.labels(endpoint="validate_token", error_type="unexpected_error").inc()
+        TOKEN_VALIDATION.labels(status="failure", reason="unexpected_error").inc()
+        logger.error(f"[AUTH] Token validation failed - IP: {request.client.host}, Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/me")
 async def get_user_info(request: Request):
-    # Get access token from cookie
-    access_token = request.cookies.get("access_token")
-    session_id = request.cookies.get("session_id")
-    if not access_token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    if not session_id:
-        raise HTTPException(status_code=401, detail="No session")
-    
     try:
-        payload = jwt.decode(
-            access_token, 
-            settings.JWT_SECRET_KEY,
-            algorithms=[settings.JWT_ALGORITHM]
-        )
-        return payload
+        # Get access token from cookie
+        access_token = request.cookies.get("access_token")
+        session_id = request.cookies.get("session_id")
+        
+        if not access_token:
+            AUTH_ERROR.labels(endpoint="me", error_type="missing_token").inc()
+            logger.warning(f"[AUTH] Access attempt without token - IP: {request.client.host}")
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        if not session_id:
+            AUTH_ERROR.labels(endpoint="me", error_type="missing_session").inc()
+            logger.warning(f"[AUTH] Access attempt without session - IP: {request.client.host}")
+            raise HTTPException(status_code=401, detail="No session")
+    
+        try:
+            payload = jwt.decode(
+                access_token, 
+                settings.JWT_SECRET_KEY,
+                algorithms=[settings.JWT_ALGORITHM]
+            )
+            return payload
+            
+        except JWTError as e:
+            # Handle all JWT-related errors with a single catch
+            error_msg = str(e)
+            error_type = "expired_token" if "expired" in error_msg.lower() else "invalid_token"
+            
+            AUTH_ERROR.labels(endpoint="me", error_type=error_type).inc()
+            logger.error(f"[AUTH] Token validation failed - IP: {request.client.host}, Error: {error_msg}")
+            
+            if "expired" in error_msg.lower():
+                raise HTTPException(status_code=401, detail="Token has expired")
+            raise HTTPException(status_code=401, detail="Invalid token")
+            
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=401, detail=e)
+        AUTH_ERROR.labels(endpoint="me", error_type="unexpected_error").inc()
+        logger.error(f"[AUTH] Unexpected error in /me endpoint - IP: {request.client.host}, Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/logout")
 async def logout(response: Response):
@@ -331,26 +430,40 @@ async def refresh_token(
     db: Session = Depends(get_db),
     memcache_client: aiomcache.Client = Depends(get_memcache_client)
 ):
-    refresh_token = request.cookies.get("refresh_token")
-    session_id = request.cookies.get("session_id")
-    
-    # TODO: split
-    if not refresh_token or not session_id:
-        raise HTTPException(status_code=401, detail="No refresh token or session ID")
-    
     try:
-        # Verify refresh token
-        payload = jwt.decode(
-            refresh_token,
-            settings.JWT_REFRESH_SECRET_KEY,
-            algorithms=[settings.JWT_ALGORITHM]
-        )
-        if payload.get("token_type") != "refresh":
-            raise HTTPException(status_code=401, detail="Invalid token type")
+        refresh_token = request.cookies.get("refresh_token")
+        session_id = request.cookies.get("session_id")
         
+        if not refresh_token or not session_id:
+            AUTH_ERROR.labels(endpoint="refresh", error_type="missing_credentials").inc()
+            TOKEN_REFRESH.labels(status="failure", reason="missing_credentials").inc()
+            logger.error(f"[AUTH] Token refresh failed - IP: {request.client.host}, Error: Missing refresh token or session ID")
+            raise HTTPException(status_code=401, detail="No refresh token or session ID")
+        
+        try:
+            payload = jwt.decode(
+                refresh_token,
+                settings.JWT_REFRESH_SECRET_KEY,
+                algorithms=[settings.JWT_ALGORITHM]
+            )
+        except JWTError as e:
+            error_msg = str(e)
+            error_type = "expired_token" if "expired" in error_msg.lower() else "invalid_token"
+            
+            AUTH_ERROR.labels(endpoint="refresh", error_type=error_type).inc()
+            TOKEN_REFRESH.labels(status="failure", reason=error_type).inc()
+            logger.error(f"[AUTH] Token refresh failed - IP: {request.client.host}, Error: {error_msg}")
+            
+            if "expired" in error_msg.lower():
+                raise HTTPException(status_code=401, detail="Token expired")
+            raise HTTPException(status_code=401, detail="Invalid token format")
+
         # Get user data from database
         user = db.query(User).filter(User.user_id == payload["sub"]).first()
         if not user:
+            AUTH_ERROR.labels(endpoint="refresh", error_type="user_not_found").inc()
+            TOKEN_REFRESH.labels(status="failure", reason="user_not_found").inc()
+            logger.error(f"[AUTH] Token refresh failed - IP: {request.client.host}, Error: User not found")
             raise HTTPException(status_code=401, detail="User not found")
         
         # Create new tokens
@@ -417,8 +530,14 @@ async def refresh_token(
             max_age=settings.SESSION_ID_EXPIRE_MINUTES * 60
         )
         
+        TOKEN_REFRESH.labels(status="success", reason="valid_token").inc()
+        logger.info(f"[AUTH] Token refresh successful for user {user_data['sub']} from IP {request.client.host}")
         return {"status": "success"}
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"[AUTH] Error in refresh_token: {str(e)}")
-        raise HTTPException(status_code=401, detail="Invalid refresh token")
+        AUTH_ERROR.labels(endpoint="refresh", error_type="unexpected_error").inc()
+        TOKEN_REFRESH.labels(status="failure", reason="unexpected_error").inc()
+        logger.error(f"[AUTH] Token refresh failed - IP: {request.client.host}, Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
