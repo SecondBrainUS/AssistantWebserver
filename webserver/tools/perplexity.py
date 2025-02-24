@@ -80,7 +80,11 @@ def get_tool_function_map():
         "query_perplexity": {
             "function": query_perplexity,
             "description": ( "Perform a live search query using Perplexity AI to get up-to-date information from the internet."
-                            "If the user specified time or recency, use the argument for it instead of including it in the query."),
+                            "If the user specified time or recency, use the argument for it instead of including it in the query."
+                            "Do NOT apply max tokens unless specified by the user" 
+                            "When asked about multiple topics or a list of items, perform one search per item instead of searching them all at once."
+                            ),
+
             "parameters": {
                 "type": "object",
                 "properties": {

@@ -245,7 +245,7 @@ class AssistantRealtimeNamespace(BaseNamespace):
                 model_id = data.get('model_id')
 
                 logger.debug(f"[SEND MESSAGE] Found room, passing message to room")
-                await room.handle_send_message(message, sid, model_id)
+                await room._handle_send_message(message, sid, model_id)
                     
             except Exception as e:
                 logger.error(f"Top-level error in send_assistant_message: {e}")

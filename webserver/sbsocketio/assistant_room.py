@@ -1,6 +1,6 @@
 import logging
 import socketio
-from typing import Optional
+from typing import Optional, Any
 from abc import abstractmethod
 from webserver.config import settings
 from assistant.assistant_functions import AssistantFunctions
@@ -14,7 +14,17 @@ from webserver.tools.notion import get_tool_function_map as get_notion_tool_map
 from webserver.tools.google_calendar_helper import get_tool_function_map as get_gcal_tool_map
 from webserver.tools.sensor_values import get_tool_function_map as get_sensor_tool_map
 from webserver.tools.finance import get_tool_function_map as get_finance_tool_map
+from prometheus_client import Counter
+
 logger = logging.getLogger(__name__)
+
+ASSISTANT_FUNCTION_CALLS = Counter('assistant_function_calls', 'Total assistant function calls by name', ['function_name'])
+ASSISTANT_FUNCTION_RESULTS = Counter('assistant_function_results', 'Total assistant function results by name', ['function_name'])
+ASSISTANT_RESPONSES = Counter('assistant_response', 'Total assistant responses')
+ASSISTANT_ERRORS = Counter('assistant_errors', 'Total assistant errors')
+ASSISTANT_ROOM_EVENTS = Counter('assistant_room_events', 'Total assistant room events')
+ASSISTANT_INCOMING_USER_MESSAGES = Counter('assistant_incoming_user_messages', 'Total incoming user messages')
+ASSISTANT_INCOMING_MESSAGES_MODEL_ID = Counter('assistant_incoming_messages_model_id', 'Total incoming messages by model id', ['model_id'])
 
 class AssistantRoom:
     def __init__(
@@ -95,7 +105,35 @@ class AssistantRoom:
         guide += "\n".join(tool_descriptions)
         return guide
 
-    async def _handle_message_error(
+    async def _handle_send_message(self, message: dict, sid: str, model_id: str) -> None:
+        logger.info(f"[ASST ROOM HANDLE SEND MESSAGE] SID: {sid}")
+        ASSISTANT_INCOMING_USER_MESSAGES.inc()
+        ASSISTANT_INCOMING_MESSAGES_MODEL_ID.labels(model_id=model_id).inc()
+
+    async def _handle_function_call(self, function_name: str):
+        logger.info(f"[ASST ROOM HANDLE FUNCTION CALL] {function_name}")
+        ASSISTANT_FUNCTION_CALLS.labels(function_name=function_name).inc()
+
+    async def _handle_function_result(self, function_name: str):
+        logger.info(f"[ASST ROOM HANDLE FUNCTION RESULT] {function_name}")
+        ASSISTANT_FUNCTION_RESULTS.labels(function_name=function_name).inc()
+
+    async def _handle_response(self):
+        logger.info(f"[ASST ROOM HANDLE RESPONSE]")
+        ASSISTANT_RESPONSES.inc()
+
+    async def _handle_room_event(self, event: Any, sid: str) -> None:
+        # TODO: wrap user message broadcasting and user message storage then call handle_send_message so derived class behavior runs
+        # TODO: also add self.connection_manager.get_user_id(sid) user id logic to the handle_send_message
+        # TODO: also wrap message_sent return event for original sender
+        logger.info(f"[ASST ROOM HANDLE ROOM EVENT] {event}")
+        ASSISTANT_ROOM_EVENTS.inc()
+
+    async def _handle_error(self, error: str):
+        logger.error(f"[ASST ROOM HANDLE ERROR] {error}")
+        ASSISTANT_ERRORS.inc()
+
+    async def _handle_room_error(
         self,
         error: str,
         message: Optional[dict] = None,
@@ -143,18 +181,8 @@ class AssistantRoom:
             )
             return {"error": str(e)}
         
-    # TODO: wrap user message broadcasting and user message storage then call handle_send_message so derived class behavior runs
-    # TODO: also add self.connection_manager.get_user_id(sid) user id logic to the handle_send_message
-    # TODO: also wrap message_sent return event for original sender
-    async def _handle_room_event(self, event: dict, sid: str) -> None:
-        pass
-
     @abstractmethod
     async def initialize(self) -> bool:
-        pass
-
-    @abstractmethod
-    async def handle_send_message(self, message: dict, sid: str, model_id: str) -> None:
         pass
 
     @abstractmethod

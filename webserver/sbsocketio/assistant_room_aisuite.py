@@ -12,6 +12,15 @@ from webserver.sbsocketio.connection_manager import ConnectionManager
 from webserver.db.chatdb.models import DBMessageText, DBMessageFunctionCall, DBMessageFunctionResult, DBMessageAssistantText
 from webserver.sbsocketio.models.models_assistant_chat import SBAWUserTextMessage, SBAWAssistantTextMessage, SBAWFunctionCall, SBAWFunctionResult
 from webserver.sbsocketio.assistant_room import AssistantRoom
+from prometheus_client import Counter
+
+# Prometheus metrics
+AISUITE_FUNCTION_CALLS = Counter('aisuite_function_calls_total', 'Total function calls by name', ['function_name'])
+AISUITE_FUNCTION_RESULTS = Counter('aisuite_function_results_total', 'Total function results by name', ['function_name'])
+AISUITE_USER_MESSAGES = Counter('aisuite_user_messages_total', 'Total user messages received')
+AISUITE_AI_RESPONSES = Counter('aisuite_ai_responses_total', 'Total AI responses generated')
+AISUITE_AI_ERRORS = Counter('aisuite_ai_errors_total', 'Total AI errors encountered')
+
 logger = logging.getLogger(__name__)
 
 class AiSuiteRoom(AssistantRoom):
@@ -109,8 +118,10 @@ class AiSuiteRoom(AssistantRoom):
                     "content": msg.get("content")
                 })
 
-    async def handle_send_message(self, message: dict, sid: str, model_id: str) -> None:
+    async def _handle_send_message(self, message: dict, sid: str, model_id: str) -> None:
         """Handle sending a message."""
+
+        USER_MESSAGES.inc()
         logger.info(f"[SEND MESSAGE] Handling send message in room {self.room_id}")
         if not self.chat_id:
             logger.error(f"No chat_id found for room {self.room_id}")
@@ -197,7 +208,9 @@ class AiSuiteRoom(AssistantRoom):
         full_response = await self.api.generate_response(self.conversation_history, model_id)
 
     async def _handle_function_call(self, function_call: AiSuiteAsstFunctionCall) -> None:
-        logger.info(f"[HANDLE FUNCTION CALL] {function_call}")
+        logger.info(f"[HANDLE AISUITE FUNCTION CALL] {function_call}")
+        super()._handle_function_call()
+        FUNCTION_CALLS.labels(function_name=function_call.name).inc()
 
         message_id = str(uuid.uuid4())
         created_timestamp = datetime.now()
@@ -250,6 +263,7 @@ class AiSuiteRoom(AssistantRoom):
 
     async def _handle_function_result(self, function_result: AiSuiteAsstFunctionResult) -> None:
         logger.info(f"[HANDLE FUNCTION RESULT] {function_result}")
+        FUNCTION_RESULTS.labels(function_name=function_result.name).inc()
 
         message_id = str(uuid.uuid4())
         created_timestamp = datetime.now()
@@ -299,6 +313,7 @@ class AiSuiteRoom(AssistantRoom):
 
     async def _handle_aisuite_response(self, response: AiSuiteAsstTextMessage) -> None:
         logger.info(f"[HANDLE AISUITE RESPONSE] {response}")
+        AI_RESPONSES.inc()
 
         message_id = str(uuid.uuid4())
         created_timestamp = datetime.now()
@@ -344,6 +359,7 @@ class AiSuiteRoom(AssistantRoom):
     async def _handle_aisuite_error(self, error: dict) -> None:
         """Handle errors from the AISuite API."""
         logger.error(f"[HANDLE AISUITE ERROR] Error from AISuite: {error}")
+        AI_ERRORS.inc()
         
         message_id = str(uuid.uuid4())
         created_timestamp = datetime.now()

@@ -149,12 +149,12 @@ def create_fill_parameters_tool(parameters_schema):
 	}
 
 # , dependencies=[Depends(verify_access_token), Depends(get_session)]
-@router.post("/compile")
-async def compile(
+@router.post("/compile/form")
+async def compile_form(
 	prompt: str = Body(...),
 	modelid: str = Body(...),
-	use_tools: bool = Body(default=True)
 ):
+	"""Endpoint for compiling prompt with parameter form generation"""
 	if not prompt:
 		raise HTTPException(status_code=400, detail="prompt is required")
 	if not modelid:
@@ -213,47 +213,43 @@ async def compile(
 			)
 		}]
 		
-		# Add the user's prompt
 		messages.append({
 			"role": "user",
 			"content": prompt
 		})
 
-		# First, get parameter schema if tools are enabled
+		# Get parameter schema
+		tool_response = client.chat.completions.create(
+			model=modelid,
+			messages=messages,
+			tools=[create_parameter_schema_tool()],
+			tool_choice={"type": "function", "function": {"name": "create_parameter_schema"}}
+		)
+		
 		parameters = None
-		if use_tools:
-			tool_response = client.chat.completions.create(
-				model=modelid,
-				messages=messages,
-				tools=[create_parameter_schema_tool()],
-				tool_choice={"type": "function", "function": {"name": "create_parameter_schema"}}
-			)
+		if tool_response.choices[0].message.tool_calls:
+			tool_call = tool_response.choices[0].message.tool_calls[0]
+			parameters = json.loads(tool_call.function.arguments)
 			
-			if tool_response.choices[0].message.tool_calls:
-				tool_call = tool_response.choices[0].message.tool_calls[0]
-				parameters = json.loads(tool_call.function.arguments)
-				
-				# Add assistant's tool call message
-				messages.append({
-					"role": "assistant",
-					"content": "",  # Empty string instead of None
-					"tool_calls": [{
-						"id": tool_call.id,
-						"type": "function",
-						"function": {
-							"name": tool_call.function.name,
-							"arguments": tool_call.function.arguments
-						}
-					}]
-				})
-				
-				# Add tool response message
-				messages.append({
-					"role": "tool",
-					"tool_call_id": tool_call.id,
-					"name": "create_parameter_schema",
-					"content": json.dumps(parameters)
-				})
+			messages.append({
+				"role": "assistant",
+				"content": "",
+				"tool_calls": [{
+					"id": tool_call.id,
+					"type": "function",
+					"function": {
+						"name": tool_call.function.name,
+						"arguments": tool_call.function.arguments
+					}
+				}]
+			})
+			
+			messages.append({
+				"role": "tool",
+				"tool_call_id": tool_call.id,
+				"name": "create_parameter_schema",
+				"content": json.dumps(parameters)
+			})
 
 		# Get the final expanded prompt
 		final_response = client.chat.completions.create(
@@ -263,8 +259,6 @@ async def compile(
 		)
 
 		expanded_prompt = final_response.choices[0].message.content
-		
-		# Add final response to messages
 		messages.append({
 			"role": "assistant",
 			"content": expanded_prompt
@@ -274,6 +268,76 @@ async def compile(
 			content={
 				"expanded_prompt": expanded_prompt,
 				"parameters": parameters["parameters"] if parameters else None,
+				"messages": messages
+			},
+			status_code=status.HTTP_200_OK
+		)
+
+	except Exception as e:
+		logger.error(f"Error {e}", exc_info=True)
+		raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.post("/compile")
+async def compile(
+	prompt: str = Body(...),
+	modelid: str = Body(...),
+):
+	"""Endpoint for simple prompt compilation without parameter form"""
+	if not prompt:
+		raise HTTPException(status_code=400, detail="prompt is required")
+	if not modelid:
+		raise HTTPException(status_code=400, detail="model_id is required")
+
+	modelid = modelid.replace('aisuite.', '')
+
+	try:
+		client = aisuite.Client()
+		client.configure(client_config)
+		
+		messages = [{
+			"role": "system",
+			"content": """You are an expert prompt engineer. You are tasked with rewriting and optimizing input prompts. When given a shorthand or unstructured prompt, transform it into a fully detailed, optimized prompt following these steps:
+			Step 1: **Analyze the Input**
+			- Read the provided prompt carefully.
+			- Identify the core objective (Goal), the desired answer structure (Return Format), potential ambiguities or critical checks (Warnings), and any necessary supporting background (Context Dump).
+
+			Step 2: **Rewrite and Structure**
+			- Reformulate the prompt to include four clear sections:
+			- **Goal:** Define exactly what is being requested.
+			- **Return Format:** Specify the structure and format of the desired response (e.g., bullet lists, numbered steps, specific sections).
+			- **Warnings:** Note any potential pitfalls, sensitive topics, or ambiguous language that needs special attention.
+			- **Context Dump:** Provide any background context, definitions, or clarifications required for full understanding.
+			- Use clear, concise, and plain language, ensuring that each section is distinct and easy to follow.
+
+			Step 3: **Optimize and Validate**
+			- Simplify and clarify sentence structures.
+			- Remove redundant language and correct any ambiguities.
+			- Ensure that the rewritten prompt is fully self-contained and requires no external references.
+			- Confirm that the prompt adheres to high-quality prompt engineering practices: clarity, completeness, and specificity.
+
+			Your final output should be a well-structured prompt that guides a downstream LLM to produce accurate, high-quality responses based on the provided input.
+
+			"""
+		}, {
+			"role": "user",
+			"content": prompt
+		}]
+
+		response = client.chat.completions.create(
+			model=modelid,
+			messages=messages,
+			temperature=0.7
+		)
+
+		expanded_prompt = response.choices[0].message.content
+		messages.append({
+			"role": "assistant",
+			"content": expanded_prompt
+		})
+
+		return JSONResponse(
+			content={
+				"expanded_prompt": expanded_prompt,
 				"messages": messages
 			},
 			status_code=status.HTTP_200_OK

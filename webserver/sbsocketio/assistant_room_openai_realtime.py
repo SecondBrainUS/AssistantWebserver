@@ -284,7 +284,7 @@ class OpenAiRealTimeRoom(AssistantRoom):
             await self.broadcast(f"error {self.room_id}", None, {"error": "OpenAI Realtime session has expired"})
             await self.cleanup()
 
-    async def handle_send_message(self, message: dict, sid: str, model_id: str) -> None:
+    async def _handle_send_message(self, message: dict, sid: str, model_id: str) -> None:
         """Handle sending a message."""
         logger.info(f"[SEND MESSAGE] Handling send message in room {self.room_id}")
         if not self.chat_id:
