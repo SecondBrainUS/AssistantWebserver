@@ -1,8 +1,4 @@
-
 does show acquired on spotify have a new episode?
-
-
-
 
 Goal:
     Multiple users, multiple sessions connected to a single AI agent
@@ -38,8 +34,6 @@ Goal:
 
       _on_first_message()
         create chat_id
-
-
 
 
 

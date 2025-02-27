@@ -121,7 +121,7 @@ class AiSuiteRoom(AssistantRoom):
     async def _handle_send_message(self, message: dict, sid: str, model_id: str) -> None:
         """Handle sending a message."""
 
-        USER_MESSAGES.inc()
+        AISUITE_USER_MESSAGES.inc()
         logger.info(f"[SEND MESSAGE] Handling send message in room {self.room_id}")
         if not self.chat_id:
             logger.error(f"No chat_id found for room {self.room_id}")
@@ -209,8 +209,8 @@ class AiSuiteRoom(AssistantRoom):
 
     async def _handle_function_call(self, function_call: AiSuiteAsstFunctionCall) -> None:
         logger.info(f"[HANDLE AISUITE FUNCTION CALL] {function_call}")
-        super()._handle_function_call()
-        FUNCTION_CALLS.labels(function_name=function_call.name).inc()
+        await super()._handle_function_call(function_call.name)
+        AISUITE_FUNCTION_CALLS.labels(function_name=function_call.name).inc()
 
         message_id = str(uuid.uuid4())
         created_timestamp = datetime.now()
@@ -263,7 +263,8 @@ class AiSuiteRoom(AssistantRoom):
 
     async def _handle_function_result(self, function_result: AiSuiteAsstFunctionResult) -> None:
         logger.info(f"[HANDLE FUNCTION RESULT] {function_result}")
-        FUNCTION_RESULTS.labels(function_name=function_result.name).inc()
+        await super()._handle_function_result(function_result.name)
+        AISUITE_FUNCTION_RESULTS.labels(function_name=function_result.name).inc()
 
         message_id = str(uuid.uuid4())
         created_timestamp = datetime.now()
@@ -313,7 +314,8 @@ class AiSuiteRoom(AssistantRoom):
 
     async def _handle_aisuite_response(self, response: AiSuiteAsstTextMessage) -> None:
         logger.info(f"[HANDLE AISUITE RESPONSE] {response}")
-        AI_RESPONSES.inc()
+        await super()._handle_response()
+        AISUITE_AI_RESPONSES.inc()
 
         message_id = str(uuid.uuid4())
         created_timestamp = datetime.now()
@@ -359,7 +361,8 @@ class AiSuiteRoom(AssistantRoom):
     async def _handle_aisuite_error(self, error: dict) -> None:
         """Handle errors from the AISuite API."""
         logger.error(f"[HANDLE AISUITE ERROR] Error from AISuite: {error}")
-        AI_ERRORS.inc()
+        await super()._handle_error(str(error.get("message", "Unknown error")))
+        AISUITE_AI_ERRORS.inc()
         
         message_id = str(uuid.uuid4())
         created_timestamp = datetime.now()

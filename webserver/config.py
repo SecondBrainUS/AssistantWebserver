@@ -32,8 +32,8 @@ class Settings(BaseSettings):
     SESSION_ID_EXPIRE_MINUTES: int
 
     # OpenAI
-    OPENAI_API_KEY: str
-    OPENAI_REALTIME_ENDPOINT_URL: str
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_REALTIME_ENDPOINT_URL: Optional[str] = None
 
     # AWS
     AWS_ACCESS_KEY_ID: Optional[str] = None
@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
 
     # Perplexity
-    PERPLEXITY_API_KEY: str
+    PERPLEXITY_API_KEY: Optional[str] = None
 
     # Groq
     GROQ_API_KEY: Optional[str] = None
@@ -51,37 +51,43 @@ class Settings(BaseSettings):
     # XAI
     XAI_API_KEY: Optional[str] = None
 
-    MODELS_FILEPATH: str
+    MODELS_FILEPATH: Optional[str] = None
 
     # Assistant Functions Integration Variable
 
     # Notion
-    NOTION_API_KEY: str
-    NOTION_RUNNING_LIST_DATABASE_ID: str
-    NOTION_NOTES_PAGE_ID: str
+    NOTION_API_KEY: Optional[str] = None
+    NOTION_RUNNING_LIST_DATABASE_ID: Optional[str] = None
+    NOTION_NOTES_PAGE_ID: Optional[str] = None
 
     # Tidal
-    TIDAL_USERNAME: str
-    TIDAL_PASSWORD: str
-    TIDAL_SECRETS_FILEPATH: str
+    TIDAL_USERNAME: Optional[str] = None
+    TIDAL_PASSWORD: Optional[str] = None
+    TIDAL_SECRETS_FILEPATH: Optional[str] = None
 
     # Google Calendar
-    GCAL_CREDENTIALS_PATH: str
-    GCAL_TOKEN_PATH: str
+    GCAL_CREDENTIALS_PATH: Optional[str] = None
+    GCAL_TOKEN_PATH: Optional[str] = None
 
     # SensorValues
-    SENSOR_VALUES_HOST_CRITTENDEN: str
-    SENSOR_VALUES_METRICS: str
-    SENSOR_VALUES_CRITTENDEN_GROUP_ID: str
+    SENSOR_VALUES_HOST_CRITTENDEN: Optional[str] = None
+    SENSOR_VALUES_METRICS: Optional[str] = None
+    SENSOR_VALUES_CRITTENDEN_GROUP_ID: Optional[str] = None
 
     # Spotify
-    SPOTIFY_CLIENT_ID: str
-    SPOTIFY_CLIENT_SECRET: str
-    SPOTIFY_REDIRECT_URI: str
-    SPOTIFY_SCOPES: str
+    SPOTIFY_CLIENT_ID: Optional[str] = None
+    SPOTIFY_CLIENT_SECRET: Optional[str] = None
+    SPOTIFY_REDIRECT_URI: Optional[str] = None
+    SPOTIFY_SCOPES: Optional[str] = None
+
+    # BrightData
+    BRIGHT_DATA_UNLOCKER_API_KEY: Optional[str]
+    BRIGHT_DATA_UNLOCKER_ZONE: Optional[str]
+    BRIGHT_DATA_SERP_API_KEY: Optional[str]
+    BRIGHT_DATA_SERP_ZONE: Optional[str] = None
 
     # User Whitelist
-    USER_WHITELIST: Optional[str]
+    USER_WHITELIST: Optional[str] = None
     
     @property
     def CORS_ALLOWED_ORIGINS(self) -> list:

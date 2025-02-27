@@ -33,6 +33,7 @@ aisuite = "^0.1.9"
 anthropic = "^0.45.2"
 groq = "^0.18.0"
 spotipy = "^2.25.0"
+markitdown = "^0.0.1a4"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

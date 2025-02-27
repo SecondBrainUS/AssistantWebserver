@@ -14,6 +14,7 @@ from webserver.tools.notion import get_tool_function_map as get_notion_tool_map
 from webserver.tools.google_calendar_helper import get_tool_function_map as get_gcal_tool_map
 from webserver.tools.sensor_values import get_tool_function_map as get_sensor_tool_map
 from webserver.tools.finance import get_tool_function_map as get_finance_tool_map
+from webserver.tools.brightdata_search_tool import get_tool_function_map as get_brightdata_tool_map
 from prometheus_client import Counter
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,7 @@ class AssistantRoom:
         notion_tool_map = get_notion_tool_map()
         gcal_tool_map = get_gcal_tool_map()
         sensor_tool_map = get_sensor_tool_map()
+        brightdata_tool_map = get_brightdata_tool_map()
         
         # Merge all tool maps
         self.tool_map = {
@@ -83,7 +85,8 @@ class AssistantRoom:
             **tidal_tool_map,
             **notion_tool_map,
             **gcal_tool_map,
-            **sensor_tool_map
+            **sensor_tool_map,
+            **brightdata_tool_map
         }
         
         # Generate tool usage guide from system prompt descriptions
@@ -111,14 +114,17 @@ class AssistantRoom:
         ASSISTANT_INCOMING_MESSAGES_MODEL_ID.labels(model_id=model_id).inc()
 
     async def _handle_function_call(self, function_name: str):
+        """Handle function call and increment counter"""
         logger.info(f"[ASST ROOM HANDLE FUNCTION CALL] {function_name}")
         ASSISTANT_FUNCTION_CALLS.labels(function_name=function_name).inc()
 
     async def _handle_function_result(self, function_name: str):
+        """Handle function result and increment counter"""
         logger.info(f"[ASST ROOM HANDLE FUNCTION RESULT] {function_name}")
         ASSISTANT_FUNCTION_RESULTS.labels(function_name=function_name).inc()
 
     async def _handle_response(self):
+        """Handle response and increment counter"""
         logger.info(f"[ASST ROOM HANDLE RESPONSE]")
         ASSISTANT_RESPONSES.inc()
 
@@ -130,6 +136,7 @@ class AssistantRoom:
         ASSISTANT_ROOM_EVENTS.inc()
 
     async def _handle_error(self, error: str):
+        """Handle error and increment counter"""
         logger.error(f"[ASST ROOM HANDLE ERROR] {error}")
         ASSISTANT_ERRORS.inc()
 
