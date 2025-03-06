@@ -120,6 +120,7 @@ class AiSuiteRoom(AssistantRoom):
 
     async def _handle_send_message(self, message: dict, sid: str, model_id: str) -> None:
         """Handle sending a message."""
+        super()._handle_send_message(message, sid, model_id)
 
         AISUITE_USER_MESSAGES.inc()
         logger.info(f"[SEND MESSAGE] Handling send message in room {self.room_id}")
