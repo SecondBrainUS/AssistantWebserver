@@ -126,7 +126,7 @@ For the chat system's file storage, use the dedicated function:
 from webserver.util.s3 import create_chat_s3_storage
 
 # Create S3 storage specifically for chat files
-# This uses the sbaw_chat_files bucket
+# This uses the sbaw-chat-files bucket
 s3 = create_chat_s3_storage()
 
 # Use for chat file operations
@@ -168,7 +168,7 @@ The module recognizes the following settings from config.py:
 | S3_ENDPOINT | Endpoint URL for S3 or MinIO | None |
 | S3_ACCESS_KEY | Access key ID | None |
 | S3_SECRET_KEY | Secret key | None |
-| S3_BUCKET_NAME | Name of the S3 bucket | "sbaw_chat_files" |
+| S3_BUCKET_NAME | Name of the S3 bucket | "sbaw-chat-files" |
 
 ## Environment Variables
 

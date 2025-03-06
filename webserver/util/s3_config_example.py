@@ -35,7 +35,7 @@ def chat_files_example():
     print("===== Chat Files Example =====")
     
     # Create an S3Storage instance for chat files
-    # This will use the sbaw_chat_files bucket
+    # This will use the sbaw-chat-files bucket
     s3 = create_chat_s3_storage()
     
     print(f"Chat S3 Storage initialized with:")

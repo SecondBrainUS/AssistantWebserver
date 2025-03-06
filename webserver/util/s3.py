@@ -22,7 +22,7 @@ class S3Storage:
         aws_secret_access_key: Optional[str] = None,
         endpoint_url: Optional[str] = None,
         region_name: Optional[str] = None,
-        use_ssl: bool = True,
+        use_ssl: bool = False,
         create_bucket_if_not_exists: bool = True
     ):
         """
@@ -66,11 +66,17 @@ class S3Storage:
         
         session = boto3.session.Session(**session_kwargs)
         
-        client_kwargs = {}
+        client_kwargs = {
+            'config': boto3.session.Config(
+                signature_version='s3v4',
+                s3={'addressing_style': 'path'}  # This is important for MinIO
+            )
+        }
+        
         if self.endpoint_url:
             client_kwargs['endpoint_url'] = self.endpoint_url
-            # For MinIO and other S3 compatible services
             client_kwargs['use_ssl'] = self.use_ssl
+            client_kwargs['verify'] = False  # Skip SSL verification for local development
         
         self.s3_client = session.client('s3', **client_kwargs)
         self.s3_resource = session.resource('s3', **client_kwargs)
@@ -364,16 +370,16 @@ def create_s3_storage_from_config() -> S3Storage:
     - S3_ENDPOINT: Endpoint URL for S3 or MinIO
     - S3_ACCESS_KEY: Access key
     - S3_SECRET_KEY: Secret key
-    - S3_BUCKET_NAME: (Optional) Bucket name, default is "sbaw_chat_files"
+    - S3_BUCKET_NAME: (Optional) Bucket name, default is "sbaw-chat-files"
     
     Returns:
         S3Storage instance
     """
     # Determine if we're using MinIO or AWS S3 based on the endpoint
-    endpoint_url = settings.S3_ENDPOINT
+    endpoint_url = getattr(settings, "S3_ENDPOINT", None)
     
     # Default bucket name if not specified
-    bucket_name = getattr(settings, "S3_BUCKET_NAME", "sbaw_chat_files")
+    bucket_name = getattr(settings, "S3_BUCKET_NAME", "sbaw-chat-files")
     
     # Use SSL if the endpoint is https
     use_ssl = endpoint_url.startswith("https://") if endpoint_url else True
@@ -415,7 +421,7 @@ def create_s3_storage_from_env() -> S3Storage:
     bucket_name = os.environ.get('S3_BUCKET_NAME')
     if not bucket_name:
         # If not found in environment, use settings or default
-        bucket_name = getattr(settings, "S3_BUCKET_NAME", "sbaw_chat_files")
+        bucket_name = getattr(settings, "S3_BUCKET_NAME", "sbaw-chat-files")
     
     # Get endpoint URL from environment or settings
     endpoint_url = os.environ.get('S3_ENDPOINT_URL') or settings.S3_ENDPOINT
@@ -445,7 +451,7 @@ def create_s3_storage_from_env() -> S3Storage:
 def create_chat_s3_storage() -> S3Storage:
     """
     Create an S3Storage instance specifically for chat file storage.
-    Uses the 'sbaw_chat_files' bucket and inherits other settings from config.
+    Uses the 'sbaw-chat-files' bucket and inherits other settings from config.
     
     Returns:
         S3Storage: Instance configured for chat file storage
@@ -454,9 +460,9 @@ def create_chat_s3_storage() -> S3Storage:
     s3 = create_s3_storage_from_config()
     
     # Override bucket name for chat files
-    if s3.bucket_name != "sbaw_chat_files":
+    if s3.bucket_name != "sbaw-chat-files":
         s3 = S3Storage(
-            bucket_name="sbaw_chat_files",
+            bucket_name="sbaw-chat-files",
             # Inherit other settings
             endpoint_url=s3.endpoint_url,
             aws_access_key_id=s3.aws_access_key_id,
