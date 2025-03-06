@@ -1,18 +1,24 @@
 import logging
 import uuid
 from datetime import datetime
-from fastapi import APIRouter, Query, HTTPException, status, Depends, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Query, HTTPException, status, Depends, Request, File, UploadFile, Form
+from fastapi.responses import JSONResponse, StreamingResponse
 from webserver.config import settings
 from webserver.db.chatdb.db import mongodb_client
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from webserver.api.dependencies import verify_access_token, get_session
 from webserver.db.chatdb.utils import serialize_doc
-from webserver.db.chatdb.models import DBChat
+from webserver.db.chatdb.models import DBChat, DBChatFile
+from webserver.util.s3 import create_chat_s3_storage, get_chat_file_path, create_s3_storage_from_config
+import io
+import os
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# S3 storage instance for chat file operations - using config-based settings
+s3_storage = create_chat_s3_storage()
 
 @router.get("", 
     summary="Retrieve paginated chats",
@@ -186,5 +192,285 @@ async def create_chat(request: Request):
 
     return JSONResponse(
         content={"chat_id": chat.chat_id},
+        status_code=status.HTTP_200_OK
+    )
+
+@router.post("/{chat_id}/upload", 
+          dependencies=[Depends(verify_access_token), Depends(get_session)],
+          summary="Upload files to a chat",
+          response_description="Array of uploaded file metadata")
+async def upload_files(
+    chat_id: str, 
+    request: Request,
+    files: List[UploadFile] = File(...)
+):
+    """
+    Upload one or more files to the chat.
+    
+    Args:
+        chat_id: The ID of the chat to upload files to
+        files: One or more files to upload
+        
+    Returns:
+        List of file metadata objects
+    
+    Raises:
+        HTTPException: If chat not found or file upload fails
+    """
+    user_id = request.state.user["user_id"]
+    
+    # Verify chat exists and belongs to the user
+    chat = await mongodb_client.db["chats"].find_one({
+        "chat_id": chat_id,
+        "user_id": user_id
+    })
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    
+    uploaded_files = []
+    current_time = datetime.utcnow()
+    
+    try:
+        for upload_file in files:
+            # Generate unique file ID
+            file_id = str(uuid.uuid4())
+            
+            # Read file content
+            content = await upload_file.read()
+            
+            # Define S3 object key (path in the bucket)
+            object_key = get_chat_file_path(chat_id, file_id, upload_file.filename)
+            
+            # Upload to S3
+            fileobj = io.BytesIO(content)
+            success = s3_storage.upload_fileobj(
+                fileobj=fileobj,
+                object_key=object_key,
+                metadata={
+                    "chat_id": chat_id,
+                    "user_id": user_id,
+                    "filename": upload_file.filename,
+                    "content_type": upload_file.content_type
+                }
+            )
+            
+            if not success:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to upload file {upload_file.filename}"
+                )
+            
+            # Create file metadata
+            file_metadata = {
+                "fileid": file_id,
+                "filename": upload_file.filename,
+                "uploaded_at": current_time,
+                "userid": user_id,
+                "content_type": upload_file.content_type,
+                "size": len(content),
+                "object_key": object_key,
+                "metadata": {}
+            }
+            
+            uploaded_files.append(file_metadata)
+        
+        # Update chat document with file metadata
+        if uploaded_files:
+            # Get existing files or initialize an empty array
+            existing_files = chat.get("files", [])
+            updated_files = existing_files + uploaded_files
+            
+            # Update MongoDB
+            await mongodb_client.db["chats"].update_one(
+                {"chat_id": chat_id},
+                {"$set": {"files": updated_files}}
+            )
+        
+        return JSONResponse(
+            content=serialize_doc(uploaded_files),
+            status_code=status.HTTP_200_OK
+        )
+            
+    except Exception as e:
+        logger.error(f"Error uploading files to chat {chat_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload files"
+        )
+
+@router.get("/{chat_id}/files", 
+         dependencies=[Depends(verify_access_token), Depends(get_session)],
+         summary="List files in a chat",
+         response_description="Array of file metadata")
+async def list_files(chat_id: str, request: Request):
+    """
+    List all files associated with a chat.
+    
+    Args:
+        chat_id: The ID of the chat to list files from
+        
+    Returns:
+        List of file metadata objects
+    
+    Raises:
+        HTTPException: If chat not found
+    """
+    user_id = request.state.user["user_id"]
+    
+    # Verify chat exists and belongs to the user
+    chat = await mongodb_client.db["chats"].find_one({
+        "chat_id": chat_id,
+        "user_id": user_id
+    })
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    
+    # Return files from the chat document
+    files = chat.get("files", [])
+    return JSONResponse(
+        content=serialize_doc(files),
+        status_code=status.HTTP_200_OK
+    )
+
+@router.get("/{chat_id}/files/{file_id}", 
+         dependencies=[Depends(verify_access_token), Depends(get_session)],
+         summary="Get a file from a chat",
+         response_description="File content with appropriate Content-Type")
+async def get_file(chat_id: str, file_id: str, request: Request):
+    """
+    Get a specific file from a chat.
+    
+    Args:
+        chat_id: The ID of the chat
+        file_id: The ID of the file to retrieve
+        
+    Returns:
+        StreamingResponse with file content and appropriate content type
+    
+    Raises:
+        HTTPException: If chat or file not found
+    """
+    user_id = request.state.user["user_id"]
+    
+    # Verify chat exists and belongs to the user
+    chat = await mongodb_client.db["chats"].find_one({
+        "chat_id": chat_id,
+        "user_id": user_id
+    })
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    
+    # Find the file metadata in the chat document
+    files = chat.get("files", [])
+    file_metadata = next((f for f in files if f.get("fileid") == file_id), None)
+    
+    if not file_metadata:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Get the object key from file metadata
+    object_key = file_metadata.get("object_key")
+    if not object_key:
+        object_key = get_chat_file_path(chat_id, file_id, file_metadata.get('filename'))
+    
+    # Create a BytesIO object to hold the file content
+    file_content = io.BytesIO()
+    
+    # Download the file from S3
+    success = s3_storage.download_fileobj(
+        object_key=object_key,
+        fileobj=file_content
+    )
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to download file from storage"
+        )
+    
+    # Reset the pointer to the beginning of the BytesIO object
+    file_content.seek(0)
+    
+    # Create a streaming response with the file content
+    return StreamingResponse(
+        content=file_content,
+        media_type=file_metadata.get("content_type", "application/octet-stream"),
+        headers={
+            "Content-Disposition": f"attachment; filename=\"{file_metadata.get('filename')}\""
+        }
+    )
+
+@router.delete("/{chat_id}/files/{file_id}", 
+            dependencies=[Depends(verify_access_token), Depends(get_session)],
+            summary="Delete a file from a chat",
+            response_description="Deletion status")
+async def delete_file(chat_id: str, file_id: str, request: Request):
+    """
+    Delete a specific file from a chat.
+    
+    Args:
+        chat_id: The ID of the chat
+        file_id: The ID of the file to delete
+        
+    Returns:
+        JSON confirmation of deletion
+    
+    Raises:
+        HTTPException: If chat not found or deletion fails
+    """
+    user_id = request.state.user["user_id"]
+    
+    # Verify chat exists and belongs to the user
+    chat = await mongodb_client.db["chats"].find_one({
+        "chat_id": chat_id,
+        "user_id": user_id
+    })
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    
+    # Find the file metadata in the chat document
+    files = chat.get("files", [])
+    file_metadata = next((f for f in files if f.get("fileid") == file_id), None)
+    
+    # Even if file is not found in metadata, we still try to delete from S3
+    # for idempotent behavior
+    object_key = None
+    if file_metadata:
+        object_key = file_metadata.get("object_key")
+        if not object_key:
+            object_key = get_chat_file_path(chat_id, file_id, file_metadata.get('filename'))
+        
+        # Try to list and delete all objects with the prefix {chat_id}/{file_id}/
+        # This ensures all versions or related files are deleted
+        prefix = f"{chat_id}/{file_id}/"
+        try:
+            all_objects = s3_storage.list_files(prefix=prefix)
+            object_keys = [obj["Key"] for obj in all_objects]
+            
+            if object_keys:
+                s3_storage.delete_files(object_keys)
+            else:
+                # Fallback to specified object key if no objects found with prefix
+                s3_storage.delete_file(object_key)
+        except Exception as e:
+            logger.error(f"Error deleting file {file_id} from S3: {str(e)}", exc_info=True)
+            # Continue to database deletion even if S3 deletion fails
+    
+    # Remove file metadata from the chat document
+    if file_metadata:
+        try:
+            updated_files = [f for f in files if f.get("fileid") != file_id]
+            await mongodb_client.db["chats"].update_one(
+                {"chat_id": chat_id},
+                {"$set": {"files": updated_files}}
+            )
+        except Exception as e:
+            logger.error(f"Error updating chat document after file deletion: {str(e)}", exc_info=True)
+            # Continue to return success even if database update fails,
+            # as we've already tried to delete the file from S3
+    
+    # Return success regardless of whether the file existed or not
+    # This ensures idempotent behavior
+    return JSONResponse(
+        content={"message": f"File {file_id} deleted or not found"},
         status_code=status.HTTP_200_OK
     )

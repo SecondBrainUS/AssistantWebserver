@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     MEMCACHE_HOST: str
     MEMCACHE_PORT: int
 
+    # S3
+    S3_ENDPOINT: str
+    S3_ACCESS_KEY: str
+    S3_SECRET_KEY: str
+
     # Authentication
     BASE_URL: str
     FRONTEND_URL: str

@@ -1,6 +1,17 @@
 from datetime import datetime
-from typing import Literal, Optional, Any, Dict
+from typing import Literal, Optional, Any, Dict, List
 from pydantic import BaseModel
+
+class DBChatFile(BaseModel):
+    """Model for file metadata stored in a chat."""
+    fileid: str
+    filename: str
+    uploaded_at: datetime
+    userid: str
+    content_type: Optional[str] = None
+    size: Optional[int] = None
+    object_key: Optional[str] = None
+    metadata: Dict[str, Any] = {}
 
 class DBChat(BaseModel):
     chat_id: str
@@ -8,6 +19,7 @@ class DBChat(BaseModel):
     current_model_api_source: str
     current_model_id: str
     created_timestamp: datetime
+    files: Optional[List[Dict[str, Any]]] = None
 
     class Config:
         json_encoders = {
