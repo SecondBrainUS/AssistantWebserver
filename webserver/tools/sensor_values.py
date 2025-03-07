@@ -71,6 +71,27 @@ class SensorValuesClient:
         Returns:
             Dictionary with aggregated metric data
         """
+        # Convert string method to enum if needed
+        if isinstance(method, str):
+            try:
+                method = AggregationMethod(method)
+            except ValueError:
+                # Default to AVERAGE if string doesn't match any enum value
+                method = AggregationMethod.AVERAGE
+        
+        # Handle string datetime inputs
+        if isinstance(start_time, str):
+            try:
+                start_time = datetime.fromisoformat(start_time)
+            except (ValueError, TypeError):
+                start_time = None
+                
+        if isinstance(end_time, str):
+            try:
+                end_time = datetime.fromisoformat(end_time)
+            except (ValueError, TypeError):
+                end_time = None
+                
         # Set default time range if not provided
         if end_time is None:
             end_time = datetime.now()
@@ -85,8 +106,8 @@ class SensorValuesClient:
         payload = {
             "metric": metric,
             "method": method.value,
-            "start_time": start_time.isoformat(),
-            "end_time": end_time.isoformat()
+            "start_time": start_time.isoformat() if isinstance(start_time, datetime) else start_time,
+            "end_time": end_time.isoformat() if isinstance(end_time, datetime) else end_time
         }
         
         # Make API request

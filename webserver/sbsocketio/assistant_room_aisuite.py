@@ -24,6 +24,8 @@ AISUITE_AI_ERRORS = Counter('aisuite_ai_errors_total', 'Total AI errors encounte
 logger = logging.getLogger(__name__)
 
 class AiSuiteRoom(AssistantRoom):
+    base_system_prompt = f"Today's date is {datetime.now().strftime('%Y-%m-%d')}.\n\n"
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -63,6 +65,9 @@ class AiSuiteRoom(AssistantRoom):
             # Add tool usage guide to system prompt if it exists
             if self.tool_usage_guide:
                 self.set_system_prompt(self.tool_usage_guide)
+            else:
+                # Set just the base system prompt if no tool usage guide
+                self.set_system_prompt("")
             
             ai_suite.set_tool_function_map(self.tool_map)
             ai_suite.set_tool_chain_config(allow_chaining=True, max_turns=30)
@@ -82,8 +87,8 @@ class AiSuiteRoom(AssistantRoom):
 
     def set_system_prompt(self, prompt: str) -> None:
         """Set the system prompt and add it to conversation history."""
-        if hasattr(self, 'api'):
-            self.api.set_system_prompt(prompt)
+        combined_prompt = self.base_system_prompt + prompt
+        self.system_prompt = combined_prompt
         
         # Initialize conversation_history if it doesn't exist
         if not hasattr(self, 'conversation_history'):
@@ -95,7 +100,7 @@ class AiSuiteRoom(AssistantRoom):
         # Add the new system prompt as the first message
         self.conversation_history.insert(0, {
             "role": "system",
-            "content": prompt
+            "content": combined_prompt
         })
 
     async def initialize_chat(self):
@@ -117,6 +122,13 @@ class AiSuiteRoom(AssistantRoom):
                     "role": msg.get("role"),
                     "content": msg.get("content")
                 })
+
+        # Ensure the base system prompt is included
+        has_system_message = any(msg.get('role') == 'system' for msg in self.conversation_history)
+        if not has_system_message and hasattr(self, 'tool_usage_guide'):
+            self.set_system_prompt(self.tool_usage_guide)
+        elif not has_system_message:
+            self.set_system_prompt("")  # This will add just the base system prompt
 
     async def _handle_send_message(self, message: dict, sid: str, model_id: str) -> None:
         """Handle sending a message."""
