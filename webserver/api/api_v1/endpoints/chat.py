@@ -277,7 +277,7 @@ async def upload_files(
         # Update chat document with file metadata
         if uploaded_files:
             # Get existing files or initialize an empty array
-            existing_files = chat.get("files", [])
+            existing_files = chat.get("files") or []
             updated_files = existing_files + uploaded_files
             
             # Update MongoDB

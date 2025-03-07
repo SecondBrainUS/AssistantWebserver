@@ -159,6 +159,22 @@ class AiSuiteRoom(AssistantRoom):
                 room=sid, 
                 namespace=self.namespace
             )
+        
+        logger.info('FILES FILES FILES FILES')
+        logger.info(message_item.get("files"))
+
+        # TODO NOW: add helper function to get files by chatid, fileid from sbaw_chat_files
+        # add this to the base class
+        # another helper function to convert file by filetype to text for LLM
+        # append the text with new lines and some markdown to indicate start of a file and end of a file
+        # to the user message
+        # stream back an event for "processing_file", sbaw.processing_file
+        """
+        {
+            "type": "convert_to_text_for_llm"
+            "message": "Converting file "" to "" (markdown, text)
+        }
+        """
 
         message_id = str(uuid.uuid4())
         created_timestamp = datetime.now()
