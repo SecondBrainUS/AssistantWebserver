@@ -121,7 +121,7 @@ async def get_messages(chat_id: str, request: Request):
             raise HTTPException(status_code=404, detail="Chat not found")
             
         # Get the chat files with their text content
-        chat_files = chat.get("files", [])
+        chat_files = chat.get("files") or []
         file_content_map = {}
         for file in chat_files:
             if "fileid" in file and "text_content" in file:
