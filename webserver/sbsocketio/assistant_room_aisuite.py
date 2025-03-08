@@ -2,7 +2,7 @@ import logging
 import json
 import uuid
 import socketio
-from typing import Coroutine, Dict, Optional, Union
+from typing import Coroutine, Dict, Optional, Union, List, Any
 from abc import ABC, abstractmethod
 from datetime import datetime
 from webserver.config import settings
@@ -13,6 +13,7 @@ from webserver.db.chatdb.models import DBMessageText, DBMessageFunctionCall, DBM
 from webserver.sbsocketio.models.models_assistant_chat import SBAWUserTextMessage, SBAWAssistantTextMessage, SBAWFunctionCall, SBAWFunctionResult
 from webserver.sbsocketio.assistant_room import AssistantRoom
 from prometheus_client import Counter
+from webserver.util.file_conversions import process_files_for_llm
 
 # Prometheus metrics
 AISUITE_FUNCTION_CALLS = Counter('aisuite_function_calls_total', 'Total function calls by name', ['function_name'])
@@ -132,7 +133,7 @@ class AiSuiteRoom(AssistantRoom):
 
     async def _handle_send_message(self, message: dict, sid: str, model_id: str) -> None:
         """Handle sending a message."""
-        super()._handle_send_message(message, sid, model_id)
+        await super()._handle_send_message(message, sid, model_id)
 
         AISUITE_USER_MESSAGES.inc()
         logger.info(f"[SEND MESSAGE] Handling send message in room {self.room_id}")
@@ -160,21 +161,66 @@ class AiSuiteRoom(AssistantRoom):
                 namespace=self.namespace
             )
         
-        logger.info('FILES FILES FILES FILES')
-        logger.info(message_item.get("files"))
-
-        # TODO NOW: add helper function to get files by chatid, fileid from sbaw_chat_files
-        # add this to the base class
-        # another helper function to convert file by filetype to text for LLM
-        # append the text with new lines and some markdown to indicate start of a file and end of a file
-        # to the user message
-        # stream back an event for "processing_file", sbaw.processing_file
-        """
-        {
-            "type": "convert_to_text_for_llm"
-            "message": "Converting file "" to "" (markdown, text)
-        }
-        """
+        # Process attached files if any
+        file_ids = message_item.get("files", [])
+        logger.info(f"[SEND MESSAGE] Processing files: {file_ids}")
+        
+        if file_ids and len(file_ids) > 0:
+            # Notify clients that files are being processed
+            await self.sio.emit(
+                "processing_files",
+                {
+                    "message": f"Processing {len(file_ids)} file(s) for AI analysis...",
+                    "file_count": len(file_ids)
+                },
+                room=self.room_id,
+                namespace=self.namespace
+            )
+            
+            # Define a notification callback for individual file processing updates
+            async def file_processing_notification(filename, message):
+                await self.sio.emit(
+                    "processing_file",
+                    {
+                        "type": "convert_to_text_for_llm",
+                        "message": message,
+                        "filename": filename
+                    },
+                    room=self.room_id,
+                    namespace=self.namespace
+                )
+            
+            # Process files and convert to text for LLM using the utility module
+            # Now returns a dictionary mapping file IDs to their converted content
+            file_contents = await process_files_for_llm(
+                self.chat_id, 
+                file_ids,
+                notify_callback=file_processing_notification
+            )
+            
+            # Update the files in the database with their converted text content
+            if file_contents:
+                try:
+                    # Get the chat document
+                    chat = await mongodb_client.db["chats"].find_one({"chat_id": self.chat_id})
+                    if chat and "files" in chat:
+                        # Update each file's metadata with its converted text content
+                        updated_files = chat["files"]
+                        for file_id, content_data in file_contents.items():
+                            # Find the matching file in the chat's files array
+                            for file_index, file_metadata in enumerate(updated_files):
+                                if file_metadata.get("fileid") == file_id:
+                                    # Add the text_content field to the file metadata
+                                    updated_files[file_index]["text_content"] = content_data["text_content"]
+                                    break
+                        
+                        # Update the chat document with the modified files array
+                        await mongodb_client.db["chats"].update_one(
+                            {"chat_id": self.chat_id},
+                            {"$set": {"files": updated_files}}
+                        )
+                except Exception as e:
+                    logger.error(f"Error updating file metadata with text content: {str(e)}", exc_info=True)
 
         message_id = str(uuid.uuid4())
         created_timestamp = datetime.now()
@@ -189,7 +235,8 @@ class AiSuiteRoom(AssistantRoom):
             role="user",
             type="message",
             modality=message_item["modality"],
-            created_timestamp=created_timestamp
+            created_timestamp=created_timestamp,
+            files=file_ids if file_ids and len(file_ids) > 0 else None
         )
         await self.save_message(db_message.model_dump())
 
@@ -201,7 +248,8 @@ class AiSuiteRoom(AssistantRoom):
             role="user",
             type="message",
             modality="text",
-            created_timestamp=created_timestamp.isoformat()
+            created_timestamp=created_timestamp.isoformat(),
+            files=file_ids if file_ids and len(file_ids) > 0 else None
         )
 
         message_event = {
@@ -213,7 +261,15 @@ class AiSuiteRoom(AssistantRoom):
         await self.broadcast(f"receive_message {self.room_id}", sid, message_event)
 
         # Send message to AI model
-        message_aisuite = { "role": "user", "content": message_item['content'] }
+        message_aisuite = { 
+            "role": "user", 
+            "content": message_item['content'] 
+        }
+        
+        # Include file IDs in the message for the AI
+        if file_ids and len(file_ids) > 0:
+            message_aisuite["files"] = file_ids
+            
         try:
             await self.send_message_to_ai(message_aisuite, sid, userid, model_id)
         except Exception as e:
@@ -230,6 +286,32 @@ class AiSuiteRoom(AssistantRoom):
     async def send_message_to_ai(self, message: dict, sid: str, userid: str, model_id: str) -> None:
         """Send a message to the AISuite API."""
         model_id = model_id.replace("aisuite.", "", 1)
+        
+        # Check if the message has attached files and include their content
+        if 'files' in message:
+            file_ids = message.get('files', [])
+            if file_ids:
+                try:
+                    # Get the chat document to access file metadata
+                    chat = await mongodb_client.db["chats"].find_one({"chat_id": self.chat_id})
+                    if chat and "files" in chat:
+                        # Process each file and append its content to the message
+                        file_content_text = ""
+                        for file_id in file_ids:
+                            # Find the file metadata
+                            file_metadata = next((f for f in chat["files"] if f.get("fileid") == file_id), None)
+                            if file_metadata and "text_content" in file_metadata:
+                                # Format the file content with markdown
+                                filename = file_metadata.get("filename", "unknown")
+                                text_content = file_metadata.get("text_content", "")
+                                file_section = f"\n\n## FILE: {filename}\n\n{text_content}\n\n## END OF FILE: {filename}\n\n"
+                                file_content_text += file_section
+                        
+                        # Append all file content to the message
+                        if file_content_text:
+                            message["content"] += file_content_text
+                except Exception as e:
+                    logger.error(f"Error processing file content for AI: {str(e)}", exc_info=True)
         
         self.conversation_history.append(message)
         
@@ -445,8 +527,10 @@ class AiSuiteRoom(AssistantRoom):
         pass
 
     def stop_processing(self):
-        """Request to stop the current processing"""
-        self.api.stop_processing()
+        """Stop processing the current request."""
+        if hasattr(self, 'api') and self.api:
+            logger.info(f"[AISUITE ROOM] Stopping processing for room {self.room_id}")
+            self.api.stop_processing()
 
-# TODO: _execute_tool should return the class for the result
-# TODO: model_api_source -> ai_model ID/name handling
+    # TODO: _execute_tool should return the class for the result
+    # TODO: model_api_source -> ai_model ID/name handling

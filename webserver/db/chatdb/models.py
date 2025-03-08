@@ -45,6 +45,7 @@ class DBMessageBase(BaseModel):
 class DBMessageText(DBMessageBase):
     content: str
     modality: Literal["text", "audio"]
+    files: Optional[List[str]] = None
 
 class DBMessageAssistantText(DBMessageText):
     usage: Optional[Dict[str, Any]] = None

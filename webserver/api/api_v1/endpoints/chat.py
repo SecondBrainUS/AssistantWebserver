@@ -120,15 +120,43 @@ async def get_messages(chat_id: str, request: Request):
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
             
+        # Get the chat files with their text content
+        chat_files = chat.get("files", [])
+        file_content_map = {}
+        for file in chat_files:
+            if "fileid" in file and "text_content" in file:
+                file_content_map[file["fileid"]] = {
+                    "filename": file.get("filename", "unknown"),
+                    "text_content": file["text_content"],
+                    "content_type": file.get("content_type", "")
+                }
+            
+        # Get the messages for this chat
         messages = await mongodb_client.db["messages"].find({"chat_id": chat_id}).to_list(length=100)
-        formatted_messages = serialize_doc(messages)
+        
+        # Serialize messages and attach file information
+        formatted_messages = []
+        for message in messages:
+            message_dict = serialize_doc(message)
+            
+            # If the message has file IDs attached, include their content
+            if "files" in message_dict and message_dict["files"]:
+                file_ids = message_dict["files"]
+                message_dict["file_contents"] = {
+                    file_id: file_content_map.get(file_id, {}) 
+                    for file_id in file_ids 
+                    if file_id in file_content_map
+                }
+                
+            formatted_messages.append(message_dict)
+            
         return formatted_messages
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail="Invalid chat ID format")
     except Exception as e:
         logger.error(f"Error getting messages for chat_id {chat_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Failed to retrieve messages")
 
 @router.delete("/{chat_id}", dependencies=[Depends(verify_access_token), Depends(get_session)])
 async def delete_chat(chat_id: str, request: Request):
