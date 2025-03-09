@@ -11,11 +11,24 @@ import pandas as pd
 from bs4 import BeautifulSoup
 from typing import Dict, Any, List
 from markitdown import MarkItDown
+import asyncio
+import concurrent.futures
+from functools import partial
 from webserver.util.s3 import create_chat_s3_storage, get_chat_file_path
 from webserver.db.chatdb.db import mongodb_client
 
 logger = logging.getLogger(__name__)
 
+# Thread pool executor for file conversions
+_thread_pool = concurrent.futures.ThreadPoolExecutor()
+
+def shutdown_thread_pool():
+    """
+    Shutdown the file conversion thread pool.
+    Should be called during application shutdown.
+    """
+    logger.info("Shutting down file conversion thread pool")
+    _thread_pool.shutdown(wait=False)
 
 async def process_files_for_llm(chat_id: str, file_ids: List[str], notify_callback=None) -> Dict[str, Dict[str, Any]]:
     """
@@ -59,6 +72,9 @@ async def process_files_for_llm(chat_id: str, file_ids: List[str], notify_callba
     # Build result dictionary mapping file IDs to their converted content
     file_contents = {}
     
+    # Process each file in parallel using the thread pool
+    tasks = []
+    
     for file_id in file_ids:
         # Find file metadata in chat document
         file_metadata = next((f for f in chat_files if f.get("fileid") == file_id), None)
@@ -79,51 +95,88 @@ async def process_files_for_llm(chat_id: str, file_ids: List[str], notify_callba
                 )
             except Exception as notify_error:
                 logger.warning(f"Error in notification callback: {str(notify_error)}")
-            
-        # Get file from S3
+        
+        # Create task for processing this file in a separate thread
+        task = asyncio.create_task(_process_single_file(
+            file_id=file_id,
+            file_metadata=file_metadata,
+            s3_storage=s3_storage,
+            chat_id=chat_id
+        ))
+        tasks.append((file_id, task))
+    
+    # Wait for all file processing tasks to complete
+    for file_id, task in tasks:
         try:
-            # Create a BytesIO object to hold the file content
-            file_content = io.BytesIO()
-            
-            # Get the object key from file metadata or construct it
-            object_key = file_metadata.get("object_key")
-            if not object_key:
-                object_key = get_chat_file_path(chat_id, file_id, file_metadata.get('filename'))
-            
-            # Download the file from S3
-            success = s3_storage.download_fileobj(
-                object_key=object_key,
-                fileobj=file_content
-            )
-            
-            if not success:
-                logger.error(f"Failed to download file {file_id} from S3")
-                continue
-            
-            # Reset file pointer to beginning of file
-            file_content.seek(0)
-            
-            # Convert file to text based on content type
-            content_type = file_metadata.get("content_type", "")
-            converted_text = convert_file_for_llm(
-                file_content=file_content,
-                file_metadata=file_metadata
-            )
-            
-            if converted_text:
-                # Store the converted text in the result dictionary
-                file_contents[file_id] = {
-                    "filename": filename,
-                    "content_type": content_type,
-                    "text_content": converted_text
-                }
-            
+            result = await task
+            if result:
+                file_contents[file_id] = result
         except Exception as e:
             logger.error(f"Error processing file {file_id}: {str(e)}", exc_info=True)
-            continue
             
     # Return the mapping of file IDs to their converted content
     return file_contents
+
+async def _process_single_file(file_id: str, file_metadata: Dict[str, Any], s3_storage: Any, chat_id: str) -> Dict[str, Any]:
+    """
+    Process a single file in a separate thread.
+    
+    Args:
+        file_id: The ID of the file
+        file_metadata: Metadata for the file
+        s3_storage: S3 storage object
+        chat_id: The ID of the chat
+        
+    Returns:
+        Dictionary containing file info and converted text content
+    """
+    filename = file_metadata.get("filename", "unknown")
+    content_type = file_metadata.get("content_type", "")
+    
+    try:
+        # Create a BytesIO object to hold the file content
+        file_content = io.BytesIO()
+        
+        # Get the object key from file metadata or construct it
+        object_key = file_metadata.get("object_key")
+        if not object_key:
+            object_key = get_chat_file_path(chat_id, file_id, file_metadata.get('filename'))
+        
+        # Download the file from S3
+        success = s3_storage.download_fileobj(
+            object_key=object_key,
+            fileobj=file_content
+        )
+        
+        if not success:
+            logger.error(f"Failed to download file {file_id} from S3")
+            return None
+        
+        # Reset file pointer to beginning of file
+        file_content.seek(0)
+        
+        # Run the CPU-bound conversion in a thread pool
+        loop = asyncio.get_event_loop()
+        converted_text = await loop.run_in_executor(
+            _thread_pool,
+            convert_file_for_llm,
+            file_content,
+            file_metadata
+        )
+        
+        if converted_text:
+            # Return the converted text
+            return {
+                "filename": filename,
+                "content_type": content_type,
+                "text_content": converted_text
+            }
+        
+    except Exception as e:
+        logger.error(f"Error processing file {file_id}: {str(e)}", exc_info=True)
+        return None
+    
+    return None
 
 
 def convert_file_for_llm(file_content: io.BytesIO, file_metadata: Dict[str, Any]) -> str:

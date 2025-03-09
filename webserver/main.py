@@ -7,6 +7,7 @@ from webserver.sbsocketio import sio_app
 from starlette.middleware.sessions import SessionMiddleware
 from webserver.config import settings
 from webserver.db.chatdb.db import mongodb_client
+from webserver.util.file_conversions import shutdown_thread_pool
 import logging
 import uvicorn
 
@@ -39,6 +40,9 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    # Shutdown the file conversion thread pool
+    shutdown_thread_pool()
+    # Close MongoDB connection
     await mongodb_client.close()
 
 def start():
