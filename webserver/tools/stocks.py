@@ -1,5 +1,7 @@
 from typing import Dict, List, Optional, Union, Any
 import logging
+import json
+from bson import ObjectId
 from webserver.db.chatdb.db import mongodb_client
 
 logger = logging.getLogger(__name__)
@@ -10,6 +12,31 @@ PERIOD_THRESHOLDS: Dict[int, float] = {
     7: 15.0,   # 15% change in 7 days
     30: 25.0,  # 25% change in 30 days
 }
+
+# Helper function to serialize MongoDB documents
+def serialize_mongo_doc(doc: Dict) -> Dict:
+    """Convert MongoDB document to serializable dictionary"""
+    if doc is None:
+        return None
+        
+    result = {}
+    for key, value in doc.items():
+        # Convert ObjectId to string
+        if isinstance(value, ObjectId):
+            result[key] = str(value)
+        # Handle lists (e.g., for tickers or positions)
+        elif isinstance(value, list):
+            result[key] = [
+                serialize_mongo_doc(item) if isinstance(item, dict) else item
+                for item in value
+            ]
+        # Handle nested documents
+        elif isinstance(value, dict):
+            result[key] = serialize_mongo_doc(value)
+        # Pass through other values
+        else:
+            result[key] = value
+    return result
 
 async def get_finance_collection():
     return await mongodb_client.get_collection("finance")
@@ -61,7 +88,9 @@ async def list_watchlists() -> List[str]:
         collection = await get_finance_collection()
         
         cursor = collection.find({"type": "watchlist"}, {"name": 1})
-        watchlists = [doc.get("name") for doc in await cursor.to_list(length=100)]
+        docs = await cursor.to_list(length=100)
+        # Extract names from serialized documents
+        watchlists = [doc.get("name") for doc in [serialize_mongo_doc(doc) for doc in docs]]
         
         return watchlists
     except Exception as e:
@@ -74,7 +103,7 @@ async def get_watchlist(name: str) -> Optional[Dict]:
         collection = await get_finance_collection()
         
         watchlist = await collection.find_one({"type": "watchlist", "name": name})
-        return watchlist
+        return serialize_mongo_doc(watchlist)
     except Exception as e:
         logger.error(f"Error getting watchlist: {e}")
         return None
@@ -171,7 +200,9 @@ async def list_portfolios() -> List[str]:
         collection = await get_finance_collection()
         
         cursor = collection.find({"type": "portfolio"}, {"name": 1})
-        portfolios = [doc.get("name") for doc in await cursor.to_list(length=100)]
+        docs = await cursor.to_list(length=100)
+        # Extract names from serialized documents
+        portfolios = [doc.get("name") for doc in [serialize_mongo_doc(doc) for doc in docs]]
         
         return portfolios
     except Exception as e:
@@ -184,7 +215,7 @@ async def get_portfolio(name: str) -> Optional[Dict]:
         collection = await get_finance_collection()
         
         portfolio = await collection.find_one({"type": "portfolio", "name": name})
-        return portfolio
+        return serialize_mongo_doc(portfolio)
     except Exception as e:
         logger.error(f"Error getting portfolio: {e}")
         return None
