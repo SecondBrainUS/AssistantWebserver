@@ -50,6 +50,10 @@ poetry install
 cd C:\Users\alexa\Desktop\Development\SecondBrain\AssistantWebDeployment\local
 docker-compose up -d --force-recreate --build assistant_webserver
 
+docker-compose build --no-cache assistant_webserver
+docker-compose up -d --force-recreate assistant_webserver
+
+
 
 cd C:\Users\alexa\Desktop\Development\SecondBrain\AssistantWebClient\assistant-web-client
 npm run dev
