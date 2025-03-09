@@ -180,7 +180,7 @@ class AiSuiteRoom(AssistantRoom):
             # Define a notification callback for individual file processing updates
             async def file_processing_notification(filename, message):
                 await self.sio.emit(
-                    "processing_file",
+                    "sbaw.processing_file",
                     {
                         "type": "convert_to_text_for_llm",
                         "message": message,
