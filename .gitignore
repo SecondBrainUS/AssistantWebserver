@@ -5,3 +5,6 @@
 \logs
 \results
 *.log
+.env.build
+ecs_task_env.json
+ecs_secrets_block.json

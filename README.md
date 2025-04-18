@@ -265,15 +265,15 @@ docker build -t assistant-webserver .
 docker run -p 8000:8000 --env-file env/.env.docker assistant-webserver
 ```
 
-### Production Considerations
+### Production Deployment
+CMD:
+load-env.bat
+PS:
+$env:GITHUB_TOKEN = (Get-Content .env.build | Select-String "^GITHUB_TOKEN=") -replace "GITHUB_TOKEN=", ""
 
-For production deployment, consider:
+docker build -t assistant-webserver --build-arg GITHUB_TOKEN=%GITHUB_TOKEN% .
 
-1. Setting up proper HTTPS with a reverse proxy (Nginx, Traefik)
-2. Using environment-specific configuration files
-3. Implementing proper rate limiting
-4. Enabling security headers
-5. Using managed database services
+
 
 ## 🧰 Development
 
