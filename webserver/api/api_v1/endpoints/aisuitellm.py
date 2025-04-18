@@ -1,10 +1,11 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Body
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from webserver.config import settings
 from webserver.ai.aw_aisuite import AiSuiteAssistant
 from assistant.assistant_functions import AssistantFunctions
+from webserver.api.dependencies import verify_access_token, get_session
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -67,13 +68,17 @@ def initialize_ai_suite() -> AiSuiteAssistant:
         logger.error(f"Initialization error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="AI Suite initialization failed")
 
-@router.post("/chat")
-async def chat_completion(request: ChatRequest):
+@router.post("/chat", dependencies=[Depends(verify_access_token), Depends(get_session)])
+async def chat_completion(
+    request: Request,
+    chat_request: ChatRequest
+):
     """
     Generate a chat completion response using the configured AI model.
     
     Args:
-        request: ChatRequest containing messages and model configuration
+        request: FastAPI Request object for accessing user information
+        chat_request: ChatRequest containing messages and model configuration
     
     Returns:
         JSON response containing the generated content and any tool interactions
@@ -82,13 +87,13 @@ async def chat_completion(request: ChatRequest):
         ai_suite = initialize_ai_suite()
         
         # Convert Pydantic messages to dict format
-        messages = [msg.model_dump(exclude_none=True) for msg in request.messages]
+        messages = [msg.model_dump(exclude_none=True) for msg in chat_request.messages]
         
         # Generate response
         response = await ai_suite.generate_response(
             messages=messages,
-            model=request.model,
-            temperature=request.temperature
+            model=chat_request.model,
+            temperature=chat_request.temperature
         )
         
         return {

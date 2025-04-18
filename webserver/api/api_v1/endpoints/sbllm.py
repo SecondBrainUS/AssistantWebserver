@@ -1,10 +1,11 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import List, Dict, Any
 from assistant.sb_llm import SBLLM
 from assistant.sb_llm_assistant import SbLlmAssistant
 from assistant.assistant_functions import AssistantFunctions
 from webserver.config import settings
+from webserver.api.dependencies import verify_access_token, get_session
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -49,8 +50,9 @@ def initialize_assistant(provider: str, model: str) -> SbLlmAssistant:
         logger.error(f"Initialization error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Assistant initialization failed")
 
-@router.post("/")
+@router.post("/", dependencies=[Depends(verify_access_token), Depends(get_session)])
 async def process_message(
+    request: Request,
     provider: str = "openai",
     model: str = "gpt-4-turbo",
     messages: List[Dict[str, Any]] = [{"role": "user", "content": "Say this is a test"}]

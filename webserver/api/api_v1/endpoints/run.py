@@ -1,7 +1,7 @@
 import uuid
 import json
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, BackgroundTasks, UploadFile, File, Form
+from fastapi import APIRouter, Depends, BackgroundTasks, UploadFile, File, Form, Request
 from typing import List, Any, Optional, Dict
 from pydantic import BaseModel, Field
 from assistant.core import Assistant
@@ -11,6 +11,7 @@ from webserver.config import settings
 from fastapi.responses import StreamingResponse
 import base64
 import io
+from webserver.api.dependencies import verify_access_token, get_session
 
 router = APIRouter()
 assistant_functions = AssistantFunctions(
@@ -25,8 +26,9 @@ assistant_functions = AssistantFunctions(
 ai_assistant = Assistant(api_key=settings.OPENAI_API_KEY, tool_function_map=assistant_functions.get_tool_function_map())
 
 # TODO: generic endpoint that responds with text and URLs for audio/image/video
-@router.post("/")
+@router.post("/", dependencies=[Depends(verify_access_token), Depends(get_session)])
 async def post_run(
+    request: Request,
     text: Optional[str] = Form(None, description="Text based prompt"),
     audio: Optional[UploadFile] = File(None, description="Audio file"),
     images: Optional[List[UploadFile]] = File(None, description="Array of image files"),
@@ -73,8 +75,9 @@ async def post_run(
     return run_response
 
 # TODO: audio-only response mode with streaming response and no text (new endpoint, run/audio) comparable to run/text, run/all
-@router.post("/audio")
+@router.post("/audio", dependencies=[Depends(verify_access_token), Depends(get_session)])
 async def post_run_audio(
+    request: Request,
     text: Optional[str] = Form(None, description="Text based prompt"),
     audio: Optional[UploadFile] = File(None, description="Audio file"),
     images: Optional[List[UploadFile]] = File(None, description="Array of image files"),

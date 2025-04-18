@@ -148,9 +148,9 @@ def create_fill_parameters_tool(parameters_schema):
 		}
 	}
 
-# , dependencies=[Depends(verify_access_token), Depends(get_session)]
-@router.post("/compile/form")
+@router.post("/compile/form", dependencies=[Depends(verify_access_token), Depends(get_session)])
 async def compile_form(
+	request: Request,
 	prompt: str = Body(...),
 	modelid: str = Body(...),
 ):
@@ -277,8 +277,9 @@ async def compile_form(
 		logger.error(f"Error {e}", exc_info=True)
 		raise HTTPException(status_code=500, detail="Internal server error")
 
-@router.post("/compile")
+@router.post("/compile", dependencies=[Depends(verify_access_token), Depends(get_session)])
 async def compile(
+	request: Request,
 	prompt: str = Body(...),
 	modelid: str = Body(...),
 ):
@@ -347,8 +348,9 @@ async def compile(
 		logger.error(f"Error {e}", exc_info=True)
 		raise HTTPException(status_code=500, detail="Internal server error")
 
-@router.post("/update_parameters")
+@router.post("/update_parameters", dependencies=[Depends(verify_access_token), Depends(get_session)])
 async def update_parameters(
+	request: Request,
 	prompt: str = Body(...),
 	parameters_schema: List[Dict[str, Any]] = Body(...),
 	original_prompt: str = Body(...),
