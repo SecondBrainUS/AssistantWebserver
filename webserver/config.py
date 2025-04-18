@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     MODELS_FILEPATH: Optional[str] = None
 
     # Assistant Functions Integration Variable
+    AWS_SSM_SPOTIFY_CACHE_PARAM: Optional[str] = None
+    AWS_REGION: Optional[str] = None
 
     # Notion
     NOTION_API_KEY: Optional[str] = None

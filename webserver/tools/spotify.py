@@ -4,17 +4,28 @@ from spotipy.oauth2 import SpotifyOAuth
 import os
 import logging
 import difflib
+from webserver.util.spotify_aws_ssm_cache import SpotifySSMCacheHandler
 
 logger = logging.getLogger(__name__)
-logger.info(f"SPOTIFY_REDIRECT_URI: {settings.SPOTIFY_REDIRECT_URI}")
 
-sp_oauth = SpotifyOAuth(
-    client_id=settings.SPOTIFY_CLIENT_ID,
-    client_secret=settings.SPOTIFY_CLIENT_SECRET,
-    redirect_uri=settings.SPOTIFY_REDIRECT_URI,
-    scope=settings.SPOTIFY_SCOPES,
-    cache_path="./secrets/cache-service-account.json"
-)
+# Base OAuth configuration
+oauth_config = {
+    'client_id': settings.SPOTIFY_CLIENT_ID,
+    'client_secret': settings.SPOTIFY_CLIENT_SECRET,
+    'redirect_uri': settings.SPOTIFY_REDIRECT_URI,
+    'scope': settings.SPOTIFY_SCOPES
+}
+
+# Add cache configuration based on system mode
+if settings.SYSTEM_MODE == 'prod':
+    oauth_config['cache_handler'] = SpotifySSMCacheHandler(
+        param_name=settings.AWS_SSM_SPOTIFY_CACHE_PARAM,
+        region_name=settings.AWS_REGION
+    )
+else:
+    oauth_config['cache_path'] = "./secrets/cache-service-account.json"
+
+sp_oauth = SpotifyOAuth(**oauth_config)
 
 # Create a global Spotify client
 sp = spotipy.Spotify(auth_manager=sp_oauth)
