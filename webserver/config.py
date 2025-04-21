@@ -2,6 +2,8 @@ from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 from typing import Optional
 import os
+import json
+import boto3
 
 class Settings(BaseSettings):
     # System Variables
@@ -103,6 +105,43 @@ class Settings(BaseSettings):
 dotenv_path = os.getenv('ENVPATH', 'env/.env.local')
 print(dotenv_path)
 load_dotenv(dotenv_path=dotenv_path)
+
+secret_blob = os.getenv("SECONDBRAIN_SECRET_BLOB")
+if secret_blob and secret_blob.startswith("{"):
+    try:
+        secrets = json.loads(secret_blob)
+
+        # Inject into environment so Pydantic can use it
+        for key, value in secrets.items():
+            if key not in os.environ:
+                os.environ[key] = str(value)
+
+        print(f"[config] Loaded {len(secrets)} secrets from ECS-injected blob")
+
+    except Exception as e:
+        print(f"[config] Failed to parse injected secrets: {e}")
+else:
+    print("[config] No secret JSON blob found in SECONDBRAIN_SECRET_BLOB")
+
+# # Inject values from AWS Secrets Manager (if running in ECS)
+# secret_arn = os.getenv("SECONDBRAIN_SECRET_BLOB")
+# aws_region = os.getenv("AWS_REGION", "us-east-1")
+
+# if secret_arn:
+#     try:
+#         client = boto3.client("secretsmanager", region_name=aws_region)
+#         response = client.get_secret_value(SecretId=secret_arn)
+#         secrets = json.loads(response["SecretString"])
+
+#         # Inject each key into the environment so Pydantic can use it
+#         for key, value in secrets.items():
+#             if key not in os.environ:
+#                 os.environ[key] = str(value)  # convert non-string values
+
+#         print(f"[config] Loaded secrets from Secrets Manager: {secret_arn}")
+
+#     except Exception as e:
+#         print(f"[config] Failed to load secrets from {secret_arn}: {e}")
 
 settings = Settings()
 
