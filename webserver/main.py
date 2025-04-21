@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from webserver.api.api_v1.router import api_router
+from webserver.api.internal.router import internal_router
 from webserver.middleware.server_exceptions import load_exception_handlers
 from webserver.sbsocketio import sio_app
 from starlette.middleware.sessions import SessionMiddleware
@@ -32,6 +33,7 @@ Instrumentator().instrument(app).expose(app, include_in_schema=False)
 app.add_middleware(SessionMiddleware, secret_key=settings.JWT_SECRET_KEY)
 load_exception_handlers(app)
 app.include_router(api_router)
+app.include_router(internal_router)
 app.mount("/", sio_app)
 
 @app.on_event("startup")
