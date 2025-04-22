@@ -20,7 +20,9 @@ def create_socketio_app():
     )
 
     # Create the ASGI application
-    sio_app = socketio.ASGIApp(sio)
+    # sio_app = socketio.ASGIApp(sio)
+    sio_app = socketio.ASGIApp(sio, socketio_path="/assistant/socket.io")
+
 
     # Initialize the connection manager
     connection_manager = ConnectionManager()

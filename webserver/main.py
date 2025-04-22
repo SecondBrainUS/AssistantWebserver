@@ -16,7 +16,7 @@ logging.getLogger('socketio.server').setLevel(logging.WARNING)
 logging.getLogger('engineio.server').setLevel(logging.WARNING)
 logging.getLogger('pymongo').setLevel(logging.WARNING)
 
-app = FastAPI()
+app = FastAPI(root_path="/assistant")
 
 # Add CORS middleware
 app.add_middleware(
