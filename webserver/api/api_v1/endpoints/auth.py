@@ -147,7 +147,7 @@ async def login(provider: str, request: Request):
     """Redirect to the provider's login page"""
     if provider not in ["google"]:
         raise HTTPException(status_code=404, detail="Provider not supported")
-    redirect_uri = f"{settings.BASE_URL}/assistant/api/v1/auth/{provider}/callback"
+    redirect_uri = f"{settings.BASE_URL}{settings.BASE_PATH}/api/v1/auth/{provider}/callback"
     if provider == "google":
         return await google.authorize_redirect(request, redirect_uri)
     else:
@@ -217,7 +217,7 @@ async def callback(provider: str, request: Request, response: Response, db: Sess
         logger.info(f"[AUTH] Successful login - User: {user.email}, IP: {request.client.host}, Provider: {provider}")
 
         temp_jwt = create_temp_jwt_token(user_data)
-        frontend_redirect = f"{settings.BASE_URL}/assistant/login-success?temp_token={temp_jwt}"
+        frontend_redirect = f"{settings.BASE_URL}{settings.BASE_PATH}/login-success?temp_token={temp_jwt}"
         return RedirectResponse(frontend_redirect)
 
     except HTTPException:
@@ -248,7 +248,7 @@ async def login_success_redirect(request: Request, response: Response):
         redirect_html = f"""
         <html>
             <head>
-                <meta http-equiv="refresh" content="0;url=/assistant/login-success?temp_token={temp_token}">
+                <meta http-equiv="refresh" content="0;url={settings.BASE_PATH}/login-success?temp_token={temp_token}">
             </head>
             <body>
                 Redirecting...

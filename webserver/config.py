@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     SYSTEM_MODE: str
     PORT: int
 
+    # NEW
+    BASE_PATH: str = "/assistant"
+
     # AssistantDB
     ASSISTANTDB_URL: str
 
