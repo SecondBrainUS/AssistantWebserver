@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from jose import jwt, JWTError
 from webserver.config import settings
 from webserver.db.assistantdb.connection import get_db
-from webserver.db.assistantdb.model import User, AuthGoogle, UserSession, UserWhitelist
+from webserver.db.assistantdb.auth_models import User, AuthGoogle, UserSession, UserWhitelist
 import uuid
 import aiomcache
 import logging

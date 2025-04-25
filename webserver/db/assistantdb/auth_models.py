@@ -1,15 +1,22 @@
-from sqlalchemy import Column, String, ForeignKey, DateTime, Double
+from sqlalchemy import Column, String, ForeignKey, DateTime, Double, MetaData
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 import datetime
 import uuid
+from webserver.config import settings
 
-Base = declarative_base()
+# Create schema-aware metadata
+metadata = MetaData()
+Base = declarative_base(metadata=metadata)
+
+# Schema for auth-related models
+AUTH_SCHEMA = settings.ASSISTANTDB_AUTH_SCHEMA
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = {'schema': AUTH_SCHEMA}
     user_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String, unique=True, index=True, nullable=False)
     auth_type = Column(String, nullable=False)  # ex: "google", "microsoft"
@@ -31,7 +38,8 @@ class User(Base):
 
 class AuthGoogle(Base):
     __tablename__ = "auth_google"
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id"), primary_key=True)
+    __table_args__ = {'schema': AUTH_SCHEMA}
+    user_id = Column(UUID(as_uuid=True), ForeignKey(f"{AUTH_SCHEMA}.users.user_id"), primary_key=True)
     google_user_id = Column(String, nullable=False)
     access_token = Column(String, nullable=False)
     refresh_token = Column(String, nullable=True)
@@ -52,8 +60,9 @@ class AuthGoogle(Base):
 
 class UserSession(Base):
     __tablename__ = "user_sessions"
+    __table_args__ = {'schema': AUTH_SCHEMA}
     session_id = Column(String, primary_key=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey(f"{AUTH_SCHEMA}.users.user_id"), nullable=False)
     access_token = Column(String, nullable=False)
     refresh_token = Column(String, nullable=False)
     access_token_expires = Column(DateTime, nullable=False)
@@ -77,6 +86,7 @@ class UserSession(Base):
     
 class UserWhitelist(Base):
     __tablename__ = "user_whitelist"
+    __table_args__ = {'schema': AUTH_SCHEMA}
     email = Column(String, primary_key=True)
     created = Column(DateTime, default=func.now())
     updated = Column(DateTime, default=func.now(), onupdate=func.now())

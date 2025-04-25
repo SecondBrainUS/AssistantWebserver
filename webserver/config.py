@@ -15,6 +15,10 @@ class Settings(BaseSettings):
 
     # AssistantDB
     ASSISTANTDB_URL: str
+        
+    # Database Schema Configuration
+    ASSISTANTDB_AUTH_SCHEMA: str = "public"
+    ASSISTANTDB_INTEGRATIONS_SCHEMA: str = "public"
 
     # ChatDB
     MONGODB_URI: str

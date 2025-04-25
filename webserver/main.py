@@ -28,7 +28,7 @@ app.add_middleware(
     expose_headers=["*"]
 )
 
-Instrumentator().instrument(app).expose(app, include_in_schema=False)
+Instrumentator().instrument(app).expose(app, endpoint="/internal/metrics", include_in_schema=False)
 
 app.add_middleware(SessionMiddleware, secret_key=settings.JWT_SECRET_KEY)
 load_exception_handlers(app)

@@ -10,7 +10,7 @@ import json
 from datetime import datetime
 from webserver.db.memcache.connection import get_memcache_client
 from webserver.db.assistantdb.connection import get_db
-from webserver.db.assistantdb.model import UserSession, User
+from webserver.db.assistantdb.auth_models import UserSession, User
 
 logger = logging.getLogger(__name__)
 

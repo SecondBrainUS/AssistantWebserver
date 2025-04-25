@@ -7,7 +7,7 @@ import aiomcache
 from webserver.config import settings
 from webserver.db.memcache.connection import get_memcache_client
 from webserver.db.assistantdb.connection import get_db
-from webserver.db.assistantdb.model import UserSession, User
+from webserver.db.assistantdb.auth_models import UserSession, User
 import logging
 from datetime import datetime
 
