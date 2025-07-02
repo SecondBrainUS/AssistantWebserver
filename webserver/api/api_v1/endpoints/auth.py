@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta
+from typing import Optional
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, Request, Response, HTTPException, Security
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -296,9 +298,19 @@ async def validate_token(
             logger.error(f"[AUTH] Token validation failed - IP: {request.client.host}, Error: Invalid token type")
             raise HTTPException(status_code=400, detail="Invalid token type")
 
-        # TODO: move to Pydantic model or class
+        # Get user info from database to include in token
+        user = db.query(User).filter(User.user_id == payload["sub"]).first()
+        if not user:
+            AUTH_ERROR.labels(endpoint="validate_token", error_type="user_not_found").inc()
+            TOKEN_VALIDATION.labels(status="failure", reason="user_not_found").inc()
+            logger.error(f"[AUTH] User not found during token validation - IP: {request.client.host}, User ID: {payload['sub']}")
+            raise HTTPException(status_code=401, detail="User not found")
+
         user_data = {
             "sub": payload["sub"],
+            "email": user.email,
+            "name": user.name,
+            "picture": user.picture,
         }
         
         access_token, refresh_token = create_tokens(user_data)
@@ -372,8 +384,14 @@ async def validate_token(
         logger.error(f"[AUTH] Token validation failed - IP: {request.client.host}, Error: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@router.get("/me")
-async def get_user_info(request: Request):
+class UserProfileResponse(BaseModel):
+    user_id: str
+    email: Optional[str]
+    name: Optional[str]
+    picture: Optional[str]
+
+@router.get("/me", response_model=UserProfileResponse)
+async def get_user_info(request: Request, db: Session = Depends(get_db)):
     try:
         # Get access token from cookie
         access_token = request.cookies.get("access_token")
@@ -395,7 +413,21 @@ async def get_user_info(request: Request):
                 settings.JWT_SECRET_KEY,
                 algorithms=[settings.JWT_ALGORITHM]
             )
-            return payload
+
+            # Get full user data from database
+            user = db.query(User).filter(User.user_id == payload["sub"]).first()
+            if not user:
+                AUTH_ERROR.labels(endpoint="me", error_type="user_not_found").inc()
+                logger.error(f"[AUTH] User not found - IP: {request.client.host}, User ID: {payload['sub']}")
+                raise HTTPException(status_code=401, detail="User not found")
+            
+            # Return comprehensive user profile
+            return UserProfileResponse(
+                user_id=str(user.user_id),
+                email=user.email,
+                name=user.name,
+                picture=user.picture
+            )
             
         except JWTError as e:
             # Handle all JWT-related errors with a single catch
@@ -470,6 +502,8 @@ async def refresh_token(
         user_data = {
             "sub": str(user.user_id),
             "email": user.email,
+            "name": user.name,
+            "picture": user.picture,
             "auth_type": user.auth_type
         }
         
@@ -493,9 +527,15 @@ async def refresh_token(
         db.commit()
 
         # Update session in cache
+        cache_data = {
+            "sub": str(user.user_id),
+            "email": user.email,
+            "name": user.name,
+            "picture": user.picture,
+        }
         await memcache_client.set(
             session_id.encode(),
-            json.dumps(user_data).encode()
+            json.dumps(cache_data).encode()
         )
         
         # Set new cookies
