@@ -8,3 +8,7 @@
 .env.build
 ecs_task_env.json
 ecs_secrets_block.json
+
+# Server-to-server auth keys
+server_private_key.pem
+*_private_key.pem

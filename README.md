@@ -367,3 +367,19 @@ To create a new AssistantRoom implementation:
 ## 📜 License
 
 This project is licensed under the [MIT License](LICENSE).
+
+
+def create_server_token(self, expire_minutes: int = 15) -> str:
+    """Create a signed JWT token for server authentication"""
+    payload = {
+        "client_id": self.client_id,
+        "token_type": "server",
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=expire_minutes),
+        "iat": datetime.datetime.utcnow()
+    }
+    
+    return jwt.encode(payload, self.private_key, algorithm="RS256")
+    token = self.create_server_token()
+    headers = {
+        "Authorization": f"Bearer {token}"
+    }

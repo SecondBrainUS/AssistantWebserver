@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional, List
 import os
 import json
 import boto3
@@ -105,9 +105,37 @@ class Settings(BaseSettings):
     # User Whitelist
     USER_WHITELIST: Optional[str] = None
     
+    # Add these settings for server-to-server authentication
+    SERVER_AUTH_PUBLIC_KEY: str = ""
+    SERVER_AUTH_PUBLIC_KEY_PATH: str = ""  # Alternative: path to key file
+    SERVER_AUTH_ALGORITHM: str = "RS256"
+    SERVER_AUTH_TOKEN_EXPIRE_MINUTES: int = 15
+    ALLOWED_SERVER_CLIENTS: str = "discord_bot"  # Comma-separated list
+
     @property
     def CORS_ALLOWED_ORIGINS(self) -> list:
         return [self.FRONTEND_URL, self.BASE_URL]
+
+    @property
+    def get_server_public_key(self) -> str:
+        """Get the server public key from either direct content or file path"""
+        if self.SERVER_AUTH_PUBLIC_KEY:
+            return self.SERVER_AUTH_PUBLIC_KEY
+        elif self.SERVER_AUTH_PUBLIC_KEY_PATH:
+            try:
+                with open(self.SERVER_AUTH_PUBLIC_KEY_PATH, 'r') as f:
+                    return f.read()
+            except FileNotFoundError:
+                raise ValueError(f"Public key file not found: {self.SERVER_AUTH_PUBLIC_KEY_PATH}")
+        else:
+            raise ValueError("No server public key configured (set SERVER_AUTH_PUBLIC_KEY or SERVER_AUTH_PUBLIC_KEY_PATH)")
+
+    @property  
+    def get_allowed_server_clients(self) -> List[str]:
+        """Parse comma-separated list of allowed server clients"""
+        if not self.ALLOWED_SERVER_CLIENTS:
+            return []
+        return [client.strip() for client in self.ALLOWED_SERVER_CLIENTS.split(",")]
 
 dotenv_path = os.getenv('ENVPATH', 'env/.env.local')
 print(dotenv_path)

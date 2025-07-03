@@ -179,3 +179,68 @@ async def get_session(
     # Set state
     request.state.user = user_state
     request.state.session = session_state
+
+async def verify_server_token(request: Request):
+    """Verify server-to-server JWT token using RSA public key"""
+    logger.info(f"[SERVER_AUTH] Verifying token for {request.client.host}")
+    
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        logger.warning(f"[SERVER_AUTH] Missing or invalid Authorization header from {request.client.host}")
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or invalid Authorization header"
+        )
+    
+    token = auth_header.split(" ")[1]
+    logger.debug(f"[SERVER_AUTH] Token received: {token[:20]}...")
+    
+    try:
+        public_key = settings.get_server_public_key
+        logger.debug(f"[SERVER_AUTH] Public key loaded successfully")
+    except ValueError as e:
+        logger.error(f"[SERVER_AUTH] Configuration error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Server authentication configuration error: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"[SERVER_AUTH] Unexpected error loading public key: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Server authentication configuration error"
+        )
+    
+    try:
+        payload = jwt.decode(
+            token,
+            public_key,
+            algorithms=[settings.SERVER_AUTH_ALGORITHM]
+        )
+        
+        # Verify token type and client
+        if payload.get("token_type") != "server":
+            logger.warning(f"[SERVER_AUTH] Invalid token type: {payload.get('token_type')}")
+            raise HTTPException(status_code=401, detail="Invalid token type")
+        
+        client_id = payload.get("client_id")
+        allowed_clients = settings.get_allowed_server_clients
+        logger.debug(f"[SERVER_AUTH] Client ID: {client_id}, Allowed: {allowed_clients}")
+        
+        if client_id not in allowed_clients:
+            logger.warning(f"[SERVER_AUTH] Client not authorized: {client_id}")
+            raise HTTPException(status_code=401, detail="Client not authorized")
+        
+        logger.info(f"[SERVER_AUTH] Authentication successful for client: {client_id}")
+        request.state.server_client_id = client_id
+        return payload
+        
+    except jwt.ExpiredSignatureError:
+        logger.warning(f"[SERVER_AUTH] Expired token from {request.client.host}")
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.JWTError as e:
+        logger.warning(f"[SERVER_AUTH] JWT error from {request.client.host}: {str(e)}")
+        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+    except Exception as e:
+        logger.error(f"[SERVER_AUTH] Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Authentication error")
