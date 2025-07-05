@@ -4,8 +4,16 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from webserver.config import settings
 from webserver.ai.aw_aisuite import AiSuiteAssistant
-from assistant.assistant_functions import AssistantFunctions
 from webserver.api.dependencies import verify_access_token, get_session
+from webserver.tools.stocks import get_tool_function_map as get_stocks_tool_map
+from webserver.tools.perplexity import get_tool_function_map as get_perplexity_tool_map
+from webserver.tools.spotify import get_tool_function_map as get_spotify_tool_map
+from webserver.tools.tidal import get_tool_function_map as get_tidal_tool_map
+from webserver.tools.notion import get_tool_function_map as get_notion_tool_map
+from webserver.tools.google_calendar_helper import get_tool_function_map as get_gcal_tool_map
+from webserver.tools.sensor_values import get_tool_function_map as get_sensor_tool_map
+from webserver.tools.finance import get_tool_function_map as get_finance_tool_map
+from webserver.tools.brightdata_search_tool import get_tool_function_map as get_brightdata_tool_map
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -44,22 +52,32 @@ def initialize_ai_suite() -> AiSuiteAssistant:
         
         ai_suite = AiSuiteAssistant(config=config)
         
-        # Initialize and register assistant functions
-        assistant_functions = AssistantFunctions(
-            openai_api_key=settings.OPENAI_API_KEY,
-            notion_api_key=settings.NOTION_API_KEY,
-            notion_running_list_database_id=settings.NOTION_RUNNING_LIST_DATABASE_ID,
-            notion_notes_page_id=settings.NOTION_NOTES_PAGE_ID,
-            gcal_credentials_path=settings.GCAL_CREDENTIALS_PATH,
-            gcal_token_path=settings.GCAL_TOKEN_PATH,
-            gcal_auth_method="service_account",
-            sensor_values_host=settings.SENSOR_VALUES_HOST_CRITTENDEN,
-            sensor_values_metrics=settings.SENSOR_VALUES_METRICS,
-            sensor_values_group_id=settings.SENSOR_VALUES_CRITTENDEN_GROUP_ID
-        )
+        # Get tool maps from all sources
+        stocks_tool_map = get_stocks_tool_map()
+        finance_tool_map = get_finance_tool_map()
+        perplexity_tool_map = get_perplexity_tool_map()
+        spotify_tool_map = get_spotify_tool_map()
+        tidal_tool_map = get_tidal_tool_map()
+        notion_tool_map = get_notion_tool_map()
+        gcal_tool_map = get_gcal_tool_map()
+        sensor_tool_map = get_sensor_tool_map()
+        brightdata_tool_map = get_brightdata_tool_map()
+        
+        # Merge all tool maps
+        tool_map = {
+            **stocks_tool_map,
+            **finance_tool_map,
+            **perplexity_tool_map,
+            **spotify_tool_map,
+            **tidal_tool_map,
+            **notion_tool_map,
+            **gcal_tool_map,
+            **sensor_tool_map,
+            **brightdata_tool_map
+        }
         
         # Set tool configuration
-        ai_suite.set_tool_function_map(assistant_functions.get_tool_function_map())
+        ai_suite.set_tool_function_map(tool_map)
         ai_suite.set_tool_chain_config(allow_chaining=True, max_turns=8)
         
         return ai_suite

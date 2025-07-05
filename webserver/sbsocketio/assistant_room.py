@@ -3,7 +3,6 @@ import socketio
 from typing import Optional, Any
 from abc import abstractmethod
 from webserver.config import settings
-from assistant.assistant_functions import AssistantFunctions
 from webserver.db.chatdb.db import mongodb_client
 from webserver.sbsocketio.connection_manager import ConnectionManager
 from webserver.tools.stocks import get_tool_function_map as get_stocks_tool_map
@@ -50,21 +49,7 @@ class AssistantRoom:
         if chat_id:
             self.chat_id = chat_id
 
-        self.assistant_functions = AssistantFunctions(
-            openai_api_key=settings.OPENAI_API_KEY,
-            notion_api_key=settings.NOTION_API_KEY,
-            notion_running_list_database_id=settings.NOTION_RUNNING_LIST_DATABASE_ID,
-            notion_notes_page_id=settings.NOTION_NOTES_PAGE_ID,
-            gcal_credentials_path=settings.GCAL_CREDENTIALS_PATH,
-            gcal_token_path=settings.GCAL_TOKEN_PATH,
-            gcal_auth_method="service_account",
-            sensor_values_host=settings.SENSOR_VALUES_HOST_CRITTENDEN,
-            sensor_values_metrics=settings.SENSOR_VALUES_METRICS,
-            sensor_values_group_id=settings.SENSOR_VALUES_CRITTENDEN_GROUP_ID,
-        )
-
         # Get tool maps from all sources
-        assistant_tool_map = self.assistant_functions.get_tool_function_map()
         stocks_tool_map = get_stocks_tool_map()
         finance_tool_map = get_finance_tool_map()
         perplexity_tool_map = get_perplexity_tool_map()
@@ -77,7 +62,6 @@ class AssistantRoom:
         
         # Merge all tool maps
         self.tool_map = {
-            #**assistant_tool_map, 
             **stocks_tool_map,
             **finance_tool_map,
             **perplexity_tool_map,
