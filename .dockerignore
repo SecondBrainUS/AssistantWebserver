@@ -13,7 +13,6 @@ __pycache__/
 .venv/
 logs/
 results/
-secrets/
 brightdata_content.log
 brightdata_search.log
 docs/

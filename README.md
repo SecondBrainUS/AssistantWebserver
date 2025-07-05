@@ -369,17 +369,37 @@ To create a new AssistantRoom implementation:
 This project is licensed under the [MIT License](LICENSE).
 
 
-def create_server_token(self, expire_minutes: int = 15) -> str:
-    """Create a signed JWT token for server authentication"""
-    payload = {
-        "client_id": self.client_id,
-        "token_type": "server",
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=expire_minutes),
-        "iat": datetime.datetime.utcnow()
-    }
-    
-    return jwt.encode(payload, self.private_key, algorithm="RS256")
-    token = self.create_server_token()
-    headers = {
-        "Authorization": f"Bearer {token}"
-    }
+Stashed commands for current server deployment:
+cd C:\Users\alexa\Desktop\Development\SecondBrain\AssistantWebDeployment\nordhome\nginx
+docker build -t nordsvr01:9000/sbaw_nginx .
+docker push nordsvr01:9000/sbaw_nginx
+
+cd C:\Users\alexa\Desktop\Development\SecondBrain\AssistantWebserver
+
+docker build -f Dockerfile.nordhome -t nordsvr01:9000/sbaw_assistant_webserver . --build-arg GITHUB_TOKEN=
+
+docker build -t nordsvr01:9000/sbaw_assistant_webserver .
+docker push nordsvr01:9000/sbaw_assistant_webserver
+
+sudo docker pull nordsvr01:9000/sbaw_assistant_webserver
+sudo docker compose up -d assistant_webserver --force-recreate
+
+
+cd C:\Users\alexa\Desktop\Development\SecondBrain\AssistantWebClient\assistant-web-client
+docker build -t nordsvr01:9000/sbaw_assistant_webclient .
+docker push nordsvr01:9000/sbaw_assistant_webclient
+
+cd /apps/SecondBrain
+sudo docker pull nordsvr01:9000/sbaw_nginx
+sudo docker pull nordsvr01:9000/sbaw_assistant_webserver
+sudo docker pull nordsvr01:9000/sbaw_assistant_webclient
+
+
+--build-arg GITHUB_TOKEN=
+
+cd /apps/Pigeon/DiscordNotifications
+sudo docker pull nordsvr01:9000/discord_notifications
+sudo docker compose --project-name pigeon-discord-notifications up -d --force-recreate --no-deps discord-bot
+
+sudo docker inspect -f '{{json .NetworkSettings.Networks}}' discordnotifications-discord-bot-1
+ sudo docker logs discordnotifications-discord-bot-1 --tail=1000
