@@ -14,6 +14,7 @@ from webserver.tools.google_calendar_helper import get_tool_function_map as get_
 from webserver.tools.sensor_values import get_tool_function_map as get_sensor_tool_map
 from webserver.tools.finance import get_tool_function_map as get_finance_tool_map
 from webserver.tools.brightdata_search_tool import get_tool_function_map as get_brightdata_tool_map
+from webserver.api.dependencies import verify_access_token, get_session, verify_server_token
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -88,6 +89,61 @@ def initialize_ai_suite() -> AiSuiteAssistant:
 
 @router.post("/chat", dependencies=[Depends(verify_access_token), Depends(get_session)])
 async def chat_completion(
+    request: Request,
+    chat_request: ChatRequest
+):
+    """
+    Generate a chat completion response using the configured AI model.
+    
+    Args:
+        request: FastAPI Request object for accessing user information
+        chat_request: ChatRequest containing messages and model configuration
+    
+    Returns:
+        JSON response containing the generated content and any tool interactions
+    """
+    try:
+        ai_suite = initialize_ai_suite()
+        
+        # Convert Pydantic messages to dict format
+        messages = [msg.model_dump(exclude_none=True) for msg in chat_request.messages]
+        
+        # Generate response
+        response = await ai_suite.generate_response(
+            messages=messages,
+            model=chat_request.model,
+            temperature=chat_request.temperature
+        )
+        
+        return {
+            "id": response.id,
+            "content": response.content,
+            "tool_calls": [
+                {
+                    "id": tool_call.call_id,
+                    "name": tool_call.name,
+                    "arguments": tool_call.arguments
+                }
+                for tool_call in response.tool_calls
+            ],
+            "tool_results": [
+                {
+                    "id": result.call_id,
+                    "name": result.name,
+                    "result": result.result,
+                }
+                for result in response.tool_results
+            ],
+            "token_usage": response.token_usage,
+            "stop_reason": response.stop_reason
+        }
+        
+    except Exception as e:
+        logger.error(f"Processing error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/chat/server", dependencies=[Depends(verify_server_token)])
+async def chat_completion_server(
     request: Request,
     chat_request: ChatRequest
 ):
