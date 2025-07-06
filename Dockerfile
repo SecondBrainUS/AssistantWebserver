@@ -3,8 +3,8 @@ FROM python:3.11-buster AS builder
 
 RUN pip install poetry==1.8.3
 
-# ARG GITHUB_TOKEN
-# RUN git config --global url."https://oauth2:${GITHUB_TOKEN}@github.com".insteadOf "https://github.com"
+ARG GITHUB_TOKEN
+RUN git config --global url."https://oauth2:${GITHUB_TOKEN}@github.com".insteadOf "https://github.com"
 
 ENV POETRY_NO_INTERACTION=1 \
     POETRY_VIRTUALENVS_IN_PROJECT=1 \
@@ -21,7 +21,7 @@ RUN poetry install && rm -rf $POETRY_CACHE_DIR
 FROM python:3.11-slim-buster AS runtime
 
 EXPOSE 8000
-ENV ENVPATH=env/.env.docker
+ENV ENVPATH=docker
 
 RUN apt-get update && \
     apt-get install -y libpq-dev && \

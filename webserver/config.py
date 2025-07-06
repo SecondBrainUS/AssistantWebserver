@@ -1,16 +1,35 @@
 from dotenv import load_dotenv
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, List
 import os
 import json
 import boto3
 
+secret_blob = os.getenv("SECONDBRAIN_SECRET_BLOB")
+if secret_blob and secret_blob.strip().startswith("{"):
+    try:
+        blob_secrets = json.loads(secret_blob)
+        for key, value in blob_secrets.items():
+            os.environ.setdefault(key, str(value))
+    except json.JSONDecodeError:
+        print("[CONFIG] Failed to parse SECONDBRAIN_SECRET_BLOB JSON blob")
+    except Exception as e:
+        print(f"[CONFIG] Failed to parse injected secrets: {e}")
+        
+ENV_PATH = os.getenv("ENVPATH", "local")  # e.g., 'dev', 'staging', 'prod', or 'local'
+env_file_path = os.path.join("env", f".env.{ENV_PATH}")
+print('ENVPATH: ', ENV_PATH)
+print('env_file_path: ', env_file_path)
+
 class Settings(BaseSettings):
     # System Variables
     SYSTEM_MODE: str
     PORT: int
+    LOG_FILE: Optional[str] = None
+    LOG_CONSOLE_LEVEL: Optional[str] = None
+    LOG_FILE_LEVEL: Optional[str] = None
 
-    # NEW
+    # API Variables
     BASE_PATH: str = "/assistant"
 
     # AssistantDB
@@ -44,6 +63,11 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int
     JWT_REFRESH_SECRET_KEY: str
     SESSION_ID_EXPIRE_MINUTES: int
+    SERVER_AUTH_PUBLIC_KEY: str = ""
+    SERVER_AUTH_PUBLIC_KEY_PATH: str = ""  # Alt, path to key file
+    SERVER_AUTH_ALGORITHM: str = "RS256"
+    SERVER_AUTH_TOKEN_EXPIRE_MINUTES: int = 15
+    ALLOWED_SERVER_CLIENTS: str = "discord_bot"  # Comma-separated list
 
     # OpenAI
     OPENAI_API_KEY: Optional[str] = None
@@ -105,13 +129,6 @@ class Settings(BaseSettings):
     # User Whitelist
     USER_WHITELIST: Optional[str] = None
     
-    # Add these settings for server-to-server authentication
-    SERVER_AUTH_PUBLIC_KEY: str = ""
-    SERVER_AUTH_PUBLIC_KEY_PATH: str = ""  # Alternative: path to key file
-    SERVER_AUTH_ALGORITHM: str = "RS256"
-    SERVER_AUTH_TOKEN_EXPIRE_MINUTES: int = 15
-    ALLOWED_SERVER_CLIENTS: str = "discord_bot"  # Comma-separated list
-
     @property
     def CORS_ALLOWED_ORIGINS(self) -> list:
         return [self.FRONTEND_URL, self.BASE_URL]
@@ -137,26 +154,14 @@ class Settings(BaseSettings):
             return []
         return [client.strip() for client in self.ALLOWED_SERVER_CLIENTS.split(",")]
 
-dotenv_path = os.getenv('ENVPATH', 'env/.env.local')
-print(dotenv_path)
-load_dotenv(dotenv_path=dotenv_path)
+    # Pydantic v2 config
+    model_config = SettingsConfigDict(
+        env_file=env_file_path,
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
 
-secret_blob = os.getenv("SECONDBRAIN_SECRET_BLOB")
-if secret_blob and secret_blob.startswith("{"):
-    try:
-        secrets = json.loads(secret_blob)
-
-        # Inject into environment so Pydantic can use it
-        for key, value in secrets.items():
-            if key not in os.environ:
-                os.environ[key] = str(value)
-
-        print(f"[config] Loaded {len(secrets)} secrets from ECS-injected blob")
-
-    except Exception as e:
-        print(f"[config] Failed to parse injected secrets: {e}")
-else:
-    print("[config] No secret JSON blob found in SECONDBRAIN_SECRET_BLOB")
+settings = Settings()
 
 # # Inject values from AWS Secrets Manager (if running in ECS)
 # secret_arn = os.getenv("SECONDBRAIN_SECRET_BLOB")
@@ -177,6 +182,3 @@ else:
 
 #     except Exception as e:
 #         print(f"[config] Failed to load secrets from {secret_arn}: {e}")
-
-settings = Settings()
-

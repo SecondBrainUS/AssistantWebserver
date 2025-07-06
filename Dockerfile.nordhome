@@ -21,7 +21,7 @@ RUN poetry install && rm -rf $POETRY_CACHE_DIR
 FROM python:3.11-slim-buster AS runtime
 
 EXPOSE 8000
-ENV ENVPATH=env/.env.nordhome
+ENV ENVPATH=nordhome
 
 RUN apt-get update && \
     apt-get install -y libpq-dev && \
