@@ -82,10 +82,11 @@ async def get_chats(
             
     except Exception as e:
         logger.error("Failed to fetch chats", exc_info=True)
+        logger.error(e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch chats from database"
-        )
+        ) from e
 
 @router.get("/{chat_id}", dependencies=[Depends(verify_access_token), Depends(get_session)])
 async def get_chat(chat_id: str, request: Request):
