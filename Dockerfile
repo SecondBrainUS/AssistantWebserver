@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM python:3.11-buster AS builder
+FROM python:3.11-bookworm AS builder
 
 RUN pip install poetry==1.8.3
 
@@ -18,7 +18,7 @@ RUN touch README.md
 RUN poetry install && rm -rf $POETRY_CACHE_DIR
 
 # Stage 2: Runtime
-FROM python:3.11-slim-buster AS runtime
+FROM python:3.11-slim-bookworm AS runtime
 
 EXPOSE 8000
 ENV ENVPATH=docker
