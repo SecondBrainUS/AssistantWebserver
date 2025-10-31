@@ -327,9 +327,9 @@ async def validate_token(
             value=access_token,
             secure=False if settings.SYSTEM_MODE == "dev" else True,
             httponly=True,
-            samesite="lax" if settings.SYSTEM_MODE == "dev" else "strict",
+            samesite="lax",  # Must be 'lax' for sub-path routing between /assistant and /assistant/api
             domain=None,
-            path="/",
+            path=settings.COOKIE_PATH,
             max_age=access_token_max_age
         )
 
@@ -338,9 +338,9 @@ async def validate_token(
             value=refresh_token,
             secure=False if settings.SYSTEM_MODE == "dev" else True,
             httponly=True,
-            samesite="lax" if settings.SYSTEM_MODE == "dev" else "strict",
+            samesite="lax",  # Must be 'lax' for sub-path routing between /assistant and /assistant/api
             domain=None,
-            path="/",
+            path=settings.COOKIE_PATH,
             max_age=refresh_token_max_age
         )
 
@@ -349,9 +349,9 @@ async def validate_token(
             value=session_id,
             secure=False if settings.SYSTEM_MODE == "dev" else True,
             httponly=True,
-            samesite="lax" if settings.SYSTEM_MODE == "dev" else "strict",
+            samesite="lax",  # Must be 'lax' for sub-path routing between /assistant and /assistant/api
             domain=None,
-            path="/",
+            path=settings.COOKIE_PATH,
             max_age=settings.SESSION_ID_EXPIRE_MINUTES * 60
         )
 
@@ -450,9 +450,9 @@ async def get_user_info(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/logout")
 async def logout(response: Response):
-    response.delete_cookie("access_token", path="/")
-    response.delete_cookie("refresh_token", path="/")
-    response.delete_cookie("session_id", path="/")
+    response.delete_cookie("access_token", path=settings.COOKIE_PATH)
+    response.delete_cookie("refresh_token", path=settings.COOKIE_PATH)
+    response.delete_cookie("session_id", path=settings.COOKIE_PATH)
     return {"message": "Logged out successfully"}
 
 @router.post("/refresh")
@@ -544,8 +544,8 @@ async def refresh_token(
             value=access_token,
             secure=False if settings.SYSTEM_MODE == "dev" else True,
             httponly=True,
-            samesite="lax" if settings.SYSTEM_MODE == "dev" else "strict",
-            path="/",
+            samesite="lax",  # Must be 'lax' for sub-path routing between /assistant and /assistant/api
+            path=settings.COOKIE_PATH,
             max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
         )
         
@@ -554,8 +554,8 @@ async def refresh_token(
             value=new_refresh_token,
             secure=False if settings.SYSTEM_MODE == "dev" else True,
             httponly=True,
-            samesite="lax" if settings.SYSTEM_MODE == "dev" else "strict",
-            path="/",
+            samesite="lax",  # Must be 'lax' for sub-path routing between /assistant and /assistant/api
+            path=settings.COOKIE_PATH,
             max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
         )
 
@@ -565,8 +565,8 @@ async def refresh_token(
             value=session_id,
             secure=False if settings.SYSTEM_MODE == "dev" else True,
             httponly=True,
-            samesite="lax" if settings.SYSTEM_MODE == "dev" else "strict",
-            path="/",
+            samesite="lax",  # Must be 'lax' for sub-path routing between /assistant and /assistant/api
+            path=settings.COOKIE_PATH,
             max_age=settings.SESSION_ID_EXPIRE_MINUTES * 60
         )
         
