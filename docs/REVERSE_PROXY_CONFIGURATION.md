@@ -4,8 +4,9 @@
 
 This backend is configured to run behind NGINX at:
 - **Public Base URL**: `https://sb-phl.xelaxer.com`
-- **API Path**: `/assistant/api`
-- **Frontend Path**: `/assistant` (separate app)
+- **Base Path**: `/assistant` (shared prefix for frontend and API)
+- **API Routes**: `/assistant/api/v1/...` (BASE_PATH + router prefix)
+- **Frontend**: `/assistant` (separate app, same NGINX location)
 
 ## Environment Configuration
 
@@ -21,9 +22,10 @@ Create or update your environment file (e.g., `env/.env.prod`) with these values
 # System Mode - CRITICAL: Set to 'prod' for production deployment
 SYSTEM_MODE=prod
 
-# Base Path - The root path where the API is mounted behind the reverse proxy
-# This must match the NGINX location block
-BASE_PATH=/assistant/api
+# Base Path - The root path where the application is mounted behind the reverse proxy
+# This is the shared prefix for both frontend and backend under NGINX
+# The /api part comes from the API router prefix, not from BASE_PATH
+BASE_PATH=/assistant
 
 # Base URL - The public external URL where the API is accessible
 # Used for constructing OAuth redirect URIs and absolute URLs
@@ -34,8 +36,7 @@ BASE_URL=https://sb-phl.xelaxer.com
 FRONTEND_URL=https://sb-phl.xelaxer.com
 
 # Cookie Path - The path scope for authentication cookies
-# Must be the common prefix of frontend and API paths
-# This allows cookies to be shared between /assistant (frontend) and /assistant/api (backend)
+# Should match BASE_PATH to allow cookies to be shared between frontend and API
 COOKIE_PATH=/assistant
 
 # ============================================================================
@@ -116,7 +117,7 @@ NOTION_NOTES_PAGE_ID=...
 # Spotify
 SPOTIFY_CLIENT_ID=...
 SPOTIFY_CLIENT_SECRET=...
-SPOTIFY_REDIRECT_URI=https://sb-phl.xelaxer.com/assistant/api/spotify/callback
+SPOTIFY_REDIRECT_URI=https://sb-phl.xelaxer.com/assistant/api/v1/spotify/callback
 SPOTIFY_SCOPES=user-read-playback-state,user-modify-playback-state
 
 # Tidal
@@ -161,18 +162,20 @@ This automatically:
 
 ### Route Structure
 
-With `BASE_PATH=/assistant/api`, your routes will be:
+With `BASE_PATH=/assistant`, your routes will be:
 
-| Route Type | Path | Full Public URL |
-|------------|------|-----------------|
-| OAuth Login | `/api/v1/auth/google/login` | `https://sb-phl.xelaxer.com/assistant/api/api/v1/auth/google/login` |
-| OAuth Callback | `/api/v1/auth/google/callback` | `https://sb-phl.xelaxer.com/assistant/api/api/v1/auth/google/callback` |
-| User Profile | `/api/v1/auth/me` | `https://sb-phl.xelaxer.com/assistant/api/api/v1/auth/me` |
-| Socket.IO | `/socket.io` | `https://sb-phl.xelaxer.com/assistant/api/socket.io` |
-| Health Check | `/internal/health` | `https://sb-phl.xelaxer.com/assistant/api/internal/health` |
-| Metrics | `/internal/metrics` | `https://sb-phl.xelaxer.com/assistant/api/internal/metrics` |
-| OpenAPI Docs | `/docs` | `https://sb-phl.xelaxer.com/assistant/api/docs` |
-| OpenAPI JSON | `/openapi.json` | `https://sb-phl.xelaxer.com/assistant/api/openapi.json` |
+| Route Type | Application Route | Full Public URL |
+|------------|-------------------|------------------|
+| OAuth Login | `/api/v1/auth/google/login` | `https://sb-phl.xelaxer.com/assistant/api/v1/auth/google/login` |
+| OAuth Callback | `/api/v1/auth/google/callback` | `https://sb-phl.xelaxer.com/assistant/api/v1/auth/google/callback` |
+| User Profile | `/api/v1/auth/me` | `https://sb-phl.xelaxer.com/assistant/api/v1/auth/me` |
+| Socket.IO | `/socket.io` | `https://sb-phl.xelaxer.com/assistant/socket.io` |
+| Health Check | `/internal/health` | `https://sb-phl.xelaxer.com/assistant/internal/health` |
+| Metrics | `/internal/metrics` | `https://sb-phl.xelaxer.com/assistant/internal/metrics` |
+| OpenAPI Docs | `/docs` | `https://sb-phl.xelaxer.com/assistant/docs` |
+| OpenAPI JSON | `/openapi.json` | `https://sb-phl.xelaxer.com/assistant/openapi.json` |
+
+**Note**: The `/api` in `/api/v1/...` comes from the API router's `prefix="/api/v1"` setting, not from `BASE_PATH`.
 
 ### OAuth Redirect Flow
 
@@ -183,18 +186,18 @@ redirect_uri = f"{settings.BASE_URL}{settings.BASE_PATH}/api/v1/auth/{provider}/
 ```
 
 For Google OAuth:
-- **Redirect URI**: `https://sb-phl.xelaxer.com/assistant/api/api/v1/auth/google/callback`
+- **Redirect URI**: `https://sb-phl.xelaxer.com/assistant/api/v1/auth/google/callback`
 
 ⚠️ **Important**: Add this exact URL to your Google OAuth 2.0 Client configuration:
 1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
 2. Edit your OAuth 2.0 Client ID
-3. Add to "Authorized redirect URIs": `https://sb-phl.xelaxer.com/assistant/api/api/v1/auth/google/callback`
+3. Add to "Authorized redirect URIs": `https://sb-phl.xelaxer.com/assistant/api/v1/auth/google/callback`
 
 ### Cookie Configuration
 
 Cookies are now configured to work across frontend and backend:
 
-- **Path**: `/assistant` (shared between `/assistant` frontend and `/assistant/api` backend)
+- **Path**: `/assistant` (shared prefix for frontend and API routes)
 - **Secure**: `true` in production (HTTPS only)
 - **HttpOnly**: `true` (prevents JavaScript access)
 - **SameSite**: `lax` (allows cookies across sub-paths)
@@ -202,7 +205,7 @@ Cookies are now configured to work across frontend and backend:
 
 This allows:
 ✅ Frontend at `/assistant` to receive auth cookies  
-✅ Backend at `/assistant/api` to validate auth cookies  
+✅ Backend API routes at `/assistant/api/v1/...` to validate auth cookies  
 ✅ Secure transmission over HTTPS  
 ✅ Protection against XSS attacks (httpOnly)
 
@@ -226,7 +229,7 @@ This allows:
 Your NGINX reverse proxy should be configured with:
 
 ```nginx
-location /assistant/api/ {
+location /assistant/ {
     proxy_pass http://backend-service:8000/;
     
     # Proxy headers - REQUIRED
@@ -235,7 +238,7 @@ location /assistant/api/ {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-Host $host;
-    proxy_set_header X-Forwarded-Prefix /assistant/api;
+    proxy_set_header X-Forwarded-Prefix /assistant;
     
     # WebSocket support for Socket.IO
     proxy_http_version 1.1;
@@ -251,9 +254,10 @@ location /assistant/api/ {
 
 **Critical Notes**:
 - The trailing slash in `proxy_pass http://backend-service:8000/` is **required**
-- This strips `/assistant/api` from the request before passing to the backend
-- The backend receives clean paths (e.g., `/api/v1/auth/me`)
-- FastAPI's `root_path` adds the prefix back for URL generation
+- This strips `/assistant` from the request before passing to the backend
+- The backend receives clean paths (e.g., `/api/v1/auth/me`, `/socket.io`, etc.)
+- FastAPI's `root_path` adds the `/assistant` prefix back for URL generation
+- Both frontend static files and backend API are served from the same location block
 
 ## Code Changes Applied
 
@@ -295,12 +299,12 @@ Use this checklist to validate your deployment:
 
 ### Pre-Deployment Checks
 
-- [ ] `BASE_PATH=/assistant/api` in environment config
+- [ ] `BASE_PATH=/assistant` in environment config
 - [ ] `BASE_URL=https://sb-phl.xelaxer.com` in environment config
 - [ ] `FRONTEND_URL=https://sb-phl.xelaxer.com` in environment config
 - [ ] `COOKIE_PATH=/assistant` in environment config
 - [ ] `SYSTEM_MODE=prod` in environment config
-- [ ] Google OAuth redirect URI includes: `https://sb-phl.xelaxer.com/assistant/api/api/v1/auth/google/callback`
+- [ ] Google OAuth redirect URI includes: `https://sb-phl.xelaxer.com/assistant/api/v1/auth/google/callback`
 - [ ] NGINX proxy headers configured (especially `X-Forwarded-Proto` and `X-Forwarded-Host`)
 - [ ] NGINX WebSocket support enabled for Socket.IO
 
@@ -308,20 +312,20 @@ Use this checklist to validate your deployment:
 
 #### 1. OpenAPI Documentation
 ```bash
-curl https://sb-phl.xelaxer.com/assistant/api/openapi.json | jq '.servers'
+curl https://sb-phl.xelaxer.com/assistant/openapi.json | jq '.servers'
 ```
-**Expected**: Should show `https://sb-phl.xelaxer.com/assistant/api`
+**Expected**: Should show `https://sb-phl.xelaxer.com/assistant`
 
 #### 2. Health Check
 ```bash
-curl https://sb-phl.xelaxer.com/assistant/api/internal/health
+curl https://sb-phl.xelaxer.com/assistant/internal/health
 ```
 **Expected**: `{"status": "healthy"}` or similar
 
 #### 3. OAuth Flow
-- [ ] Visit: `https://sb-phl.xelaxer.com/assistant/api/api/v1/auth/google/login`
+- [ ] Visit: `https://sb-phl.xelaxer.com/assistant/api/v1/auth/google/login`
 - [ ] Redirects to Google OAuth consent screen
-- [ ] After consent, redirects back to: `https://sb-phl.xelaxer.com/assistant/api/api/v1/auth/google/callback`
+- [ ] After consent, redirects back to: `https://sb-phl.xelaxer.com/assistant/api/v1/auth/google/callback`
 - [ ] Then redirects to: `https://sb-phl.xelaxer.com/assistant/login-success?temp_token=...`
 - [ ] Cookies are set with correct attributes in browser DevTools
 
@@ -334,7 +338,7 @@ curl https://sb-phl.xelaxer.com/assistant/api/internal/health
 
 #### 5. CORS Preflight
 ```bash
-curl -X OPTIONS https://sb-phl.xelaxer.com/assistant/api/api/v1/auth/me \
+curl -X OPTIONS https://sb-phl.xelaxer.com/assistant/api/v1/auth/me \
   -H "Origin: https://sb-phl.xelaxer.com" \
   -H "Access-Control-Request-Method: GET" \
   -H "Access-Control-Request-Headers: Content-Type" \
@@ -345,7 +349,7 @@ curl -X OPTIONS https://sb-phl.xelaxer.com/assistant/api/api/v1/auth/me \
 #### 6. Socket.IO Connection
 From browser console (on frontend at `/assistant`):
 ```javascript
-const socket = io('https://sb-phl.xelaxer.com/assistant/api');
+const socket = io('https://sb-phl.xelaxer.com/assistant');
 socket.on('connect', () => console.log('Connected!'));
 ```
 **Expected**: Socket connects successfully
@@ -353,7 +357,7 @@ socket.on('connect', () => console.log('Connected!'));
 #### 7. Authenticated Request
 ```bash
 # First login and copy cookies, then:
-curl https://sb-phl.xelaxer.com/assistant/api/api/v1/auth/me \
+curl https://sb-phl.xelaxer.com/assistant/api/v1/auth/me \
   -H "Cookie: access_token=...; session_id=..." \
   -v
 ```
@@ -369,17 +373,17 @@ curl https://sb-phl.xelaxer.com/assistant/api/api/v1/auth/me \
 ### Issue: OAuth callback fails with "Invalid redirect URI"
 
 **Cause**: Google OAuth client not configured with correct callback URL  
-**Fix**: Add exact URL to Google Cloud Console: `https://sb-phl.xelaxer.com/assistant/api/api/v1/auth/google/callback`
+**Fix**: Add exact URL to Google Cloud Console: `https://sb-phl.xelaxer.com/assistant/api/v1/auth/google/callback`
 
 ### Issue: Cookies not being sent from frontend to API
 
 **Causes**:
-1. Cookie `path` too restrictive (e.g., `/assistant/api` instead of `/assistant`)
+1. Cookie `path` doesn't match the shared prefix (must be `/assistant`)
 2. `SameSite=Strict` blocking cross-path requests
 3. Frontend and API on different domains
 
 **Fix**: 
-- Set `COOKIE_PATH=/assistant`
+- Verify `COOKIE_PATH=/assistant` matches `BASE_PATH=/assistant`
 - Ensure `samesite=lax` (already configured)
 - Verify frontend and API are same origin
 
@@ -398,7 +402,7 @@ curl https://sb-phl.xelaxer.com/assistant/api/api/v1/auth/me \
 **Fix**:
 - Add WebSocket headers to NGINX config (see example above)
 - Increase proxy timeouts
-- Verify Socket.IO connects to: `https://sb-phl.xelaxer.com/assistant/api/socket.io`
+- Verify Socket.IO connects to: `https://sb-phl.xelaxer.com/assistant/socket.io`
 
 ### Issue: OpenAPI docs show `localhost` URLs
 

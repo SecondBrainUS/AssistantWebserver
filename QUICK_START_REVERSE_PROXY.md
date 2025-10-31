@@ -6,7 +6,7 @@
 
 ```bash
 # Core configuration for reverse proxy
-BASE_PATH=/assistant/api
+BASE_PATH=/assistant
 BASE_URL=https://sb-phl.xelaxer.com
 FRONTEND_URL=https://sb-phl.xelaxer.com
 COOKIE_PATH=/assistant
@@ -20,18 +20,18 @@ SYSTEM_MODE=prod
 
 Add this redirect URI to your Google OAuth 2.0 Client:
 ```
-https://sb-phl.xelaxer.com/assistant/api/api/v1/auth/google/callback
+https://sb-phl.xelaxer.com/assistant/api/v1/auth/google/callback
 ```
 
 ### NGINX Configuration
 
 ```nginx
-location /assistant/api/ {
+location /assistant/ {
     proxy_pass http://your-backend:8000/;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-Host $host;
-    proxy_set_header X-Forwarded-Prefix /assistant/api;
+    proxy_set_header X-Forwarded-Prefix /assistant;
     
     # WebSocket support for Socket.IO
     proxy_http_version 1.1;
@@ -50,19 +50,19 @@ location /assistant/api/ {
 
 | Service | URL |
 |---------|-----|
-| API Docs | `https://sb-phl.xelaxer.com/assistant/api/docs` |
-| Health Check | `https://sb-phl.xelaxer.com/assistant/api/internal/health` |
-| OAuth Login | `https://sb-phl.xelaxer.com/assistant/api/api/v1/auth/google/login` |
-| Socket.IO | `https://sb-phl.xelaxer.com/assistant/api/socket.io` |
+| API Docs | `https://sb-phl.xelaxer.com/assistant/docs` |
+| Health Check | `https://sb-phl.xelaxer.com/assistant/internal/health` |
+| OAuth Login | `https://sb-phl.xelaxer.com/assistant/api/v1/auth/google/login` |
+| Socket.IO | `https://sb-phl.xelaxer.com/assistant/socket.io` |
 
 ## Quick Test
 
 ```bash
 # Health check
-curl https://sb-phl.xelaxer.com/assistant/api/internal/health
+curl https://sb-phl.xelaxer.com/assistant/internal/health
 
 # OpenAPI docs
-curl https://sb-phl.xelaxer.com/assistant/api/docs
+curl https://sb-phl.xelaxer.com/assistant/docs
 ```
 
 ## Full Documentation
