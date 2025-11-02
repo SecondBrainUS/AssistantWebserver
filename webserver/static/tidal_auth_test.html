@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tidal Authentication Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        
+        .status.info {
+            background: #e3f2fd;
+            color: #1976d2;
+            border: 1px solid #90caf9;
+        }
+        
+        .status.success {
+            background: #e8f5e9;
+            color: #388e3c;
+            border: 1px solid #81c784;
+        }
+        
+        .status.error {
+            background: #ffebee;
+            color: #d32f2f;
+            border: 1px solid #ef5350;
+        }
+        
+        .status.warning {
+            background: #fff3e0;
+            color: #f57c00;
+            border: 1px solid #ffb74d;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        button.secondary {
+            background: #6c757d;
+        }
+        
+        button.danger {
+            background: #dc3545;
+        }
+        
+        .session-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        
+        .session-info h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            font-weight: 600;
+            color: #555;
+        }
+        
+        .info-value {
+            color: #333;
+        }
+        
+        .code-display {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 24px;
+            text-align: center;
+            letter-spacing: 4px;
+            font-weight: bold;
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 8px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Tidal Authentication</h1>
+        <p class="subtitle">Test the Tidal OAuth API endpoints</p>
+        
+        <div id="statusMessage" class="status info hidden"></div>
+        
+        <div class="button-group">
+            <button id="checkSessionBtn" onclick="checkSession()">Check Session</button>
+            <button id="initAuthBtn" onclick="initAuth()">Start Authentication</button>
+            <button id="refreshBtn" onclick="refreshSession()" class="secondary">Refresh Session</button>
+            <button id="deleteBtn" onclick="deleteSession()" class="danger">Delete Session</button>
+        </div>
+        
+        <div id="authCodeSection" class="hidden">
+            <h3 style="color: #333; margin-bottom: 10px;">Verification Code:</h3>
+            <div id="userCode" class="code-display"></div>
+            <p style="color: #666; text-align: center; margin-bottom: 15px;">
+                A browser window should open automatically. If not, 
+                <a id="verificationLink" href="#" target="_blank">click here</a>.
+            </p>
+        </div>
+        
+        <div id="sessionInfo" class="session-info hidden">
+            <h3>Current Session Info</h3>
+            <div class="info-row">
+                <span class="info-label">Status:</span>
+                <span class="info-value" id="authStatus">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">User ID:</span>
+                <span class="info-value" id="userId">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Expires:</span>
+                <span class="info-value" id="expiryTime">-</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/v1/tidal';
+        let pollInterval = null;
+
+        function showStatus(message, type = 'info') {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+            statusEl.classList.remove('hidden');
+        }
+
+        function hideStatus() {
+            document.getElementById('statusMessage').classList.add('hidden');
+        }
+
+        async function checkSession() {
+            showStatus('Checking session...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/session/info`);
+                const data = await response.json();
+                
+                if (data.authenticated) {
+                    showStatus('✓ Authenticated and session is valid', 'success');
+                    displaySessionInfo(data);
+                } else {
+                    showStatus(`Not authenticated: ${data.message}`, 'warning');
+                    document.getElementById('sessionInfo').classList.add('hidden');
+                }
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+                console.error(error);
+            }
+        }
+
+        function displaySessionInfo(data) {
+            const sessionInfoEl = document.getElementById('sessionInfo');
+            sessionInfoEl.classList.remove('hidden');
+            
+            document.getElementById('authStatus').textContent = data.authenticated ? '✓ Authenticated' : '✗ Not Authenticated';
+            document.getElementById('userId').textContent = data.user_id || 'N/A';
+            
+            if (data.expiry_time) {
+                const expiryDate = new Date(data.expiry_time);
+                document.getElementById('expiryTime').textContent = expiryDate.toLocaleString();
+            } else {
+                document.getElementById('expiryTime').textContent = 'N/A';
+            }
+        }
+
+        async function initAuth() {
+            showStatus('Initializing authentication...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/init`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                // Display the code
+                document.getElementById('userCode').textContent = data.user_code;
+                document.getElementById('verificationLink').href = data.verification_uri_complete;
+                document.getElementById('authCodeSection').classList.remove('hidden');
+                
+                // Open the verification URL
+                window.open(data.verification_uri_complete, '_blank');
+                
+                showStatus('Waiting for authentication... (polling)', 'info');
+                
+                // Start polling
+                startPolling(data.auth_id);
+                
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+                console.error(error);
+            }
+        }
+
+        function startPolling(authId) {
+            let attempts = 0;
+            const maxAttempts = 60; // 3 minutes
+            
+            if (pollInterval) {
+                clearInterval(pollInterval);
+            }
+            
+            pollInterval = setInterval(async () => {
+                attempts++;
+                
+                try {
+                    const response = await fetch(`${API_BASE}/status/${authId}`);
+                    const data = await response.json();
+                    
+                    if (data.status === 'completed') {
+                        clearInterval(pollInterval);
+                        pollInterval = null;
+                        document.getElementById('authCodeSection').classList.add('hidden');
+                        showStatus('✓ Authentication successful! Session saved.', 'success');
+                        checkSession();
+                    } else if (data.status === 'error') {
+                        clearInterval(pollInterval);
+                        pollInterval = null;
+                        showStatus(`✗ Authentication failed: ${data.message}`, 'error');
+                    } else if (attempts >= maxAttempts) {
+                        clearInterval(pollInterval);
+                        pollInterval = null;
+                        showStatus('✗ Authentication timeout', 'error');
+                    } else {
+                        showStatus(`Waiting for authentication... (attempt ${attempts}/${maxAttempts})`, 'info');
+                    }
+                } catch (error) {
+                    console.error('Polling error:', error);
+                }
+            }, 3000); // Poll every 3 seconds
+        }
+
+        async function refreshSession() {
+            showStatus('Refreshing session...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/session/refresh`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showStatus('✓ Session refreshed successfully', 'success');
+                    checkSession();
+                } else {
+                    showStatus(`✗ ${data.detail || 'Failed to refresh session'}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+                console.error(error);
+            }
+        }
+
+        async function deleteSession() {
+            if (!confirm('Are you sure you want to delete the session?')) {
+                return;
+            }
+            
+            showStatus('Deleting session...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/session`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                
+                showStatus('✓ Session deleted', 'success');
+                document.getElementById('sessionInfo').classList.add('hidden');
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+                console.error(error);
+            }
+        }
+
+        // Check session on page load
+        window.addEventListener('load', () => {
+            checkSession();
+        });
+    </script>
+</body>
+</html>

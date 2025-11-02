@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 from webserver.api.api_v1.router import api_router
 from webserver.api.internal.router import internal_router
@@ -11,6 +12,7 @@ from webserver.db.chatdb.db import mongodb_client
 from webserver.util.file_conversions import shutdown_thread_pool
 import logging
 import uvicorn
+from pathlib import Path
 
 logging.getLogger('socketio.server').setLevel(logging.WARNING)
 logging.getLogger('engineio.server').setLevel(logging.WARNING)
@@ -34,6 +36,12 @@ app.add_middleware(SessionMiddleware, secret_key=settings.JWT_SECRET_KEY)
 load_exception_handlers(app)
 app.include_router(api_router)
 app.include_router(internal_router)
+
+# Mount static files if the directory exists
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
 app.mount("/", sio_app)
 
 @app.on_event("startup")
