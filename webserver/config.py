@@ -31,6 +31,7 @@ class Settings(BaseSettings):
 
     # API Variables
     BASE_PATH: str = "/assistant"
+    COOKIE_PATH: str = "/assistant"  # Cookie path shared with frontend
 
     # AssistantDB
     ASSISTANTDB_URL: str
